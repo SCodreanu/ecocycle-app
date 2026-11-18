@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import 'map/map_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -38,7 +39,8 @@ class _HomeShellState extends State<HomeShell> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(AuthService.errorMessage(error)),
+          content:
+              Text(AuthService.errorMessage(error)),
         ),
       );
     }
@@ -47,7 +49,8 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDarkMode = theme.brightness == Brightness.dark;
+    final isDarkMode =
+        theme.brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -65,12 +68,14 @@ class _HomeShellState extends State<HomeShell> {
             ),
           ),
           IconButton(
-            onPressed: _isSigningOut ? null : _signOut,
+            onPressed:
+                _isSigningOut ? null : _signOut,
             tooltip: 'Esci',
             icon: _isSigningOut
                 ? const SizedBox.square(
                     dimension: 20,
-                    child: CircularProgressIndicator(
+                    child:
+                        CircularProgressIndicator(
                       strokeWidth: 2,
                     ),
                   )
@@ -82,17 +87,19 @@ class _HomeShellState extends State<HomeShell> {
         child: IndexedStack(
           index: _selectedIndex,
           children: const [
+            MapScreen(),
             Center(
-              child: Text('La mappa sarà disponibile qui.'),
+              child:
+                  Text('Qui troverai i tuoi premi.'),
             ),
             Center(
-              child: Text('Qui troverai i tuoi premi.'),
+              child: Text(
+                'Qui potrai inviare una segnalazione.',
+              ),
             ),
             Center(
-              child: Text('Qui potrai inviare una segnalazione.'),
-            ),
-            Center(
-              child: Text('Qui troverai il tuo profilo.'),
+              child:
+                  Text('Qui troverai il tuo profilo.'),
             ),
           ],
         ),
@@ -111,8 +118,10 @@ class _HomeShellState extends State<HomeShell> {
             label: 'Mappa',
           ),
           NavigationDestination(
-            icon: Icon(Icons.emoji_events_outlined),
-            selectedIcon: Icon(Icons.emoji_events),
+            icon:
+                Icon(Icons.emoji_events_outlined),
+            selectedIcon:
+                Icon(Icons.emoji_events),
             label: 'Premi',
           ),
           NavigationDestination(

@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../models/recycling_point.dart';
@@ -14,6 +16,7 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   final _recyclingService = RecyclingService();
+  final _mapController = MapController();
 
   late final _tileLayer = TileLayer(
     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
@@ -27,12 +30,125 @@ class _MapScreenState extends State<MapScreen> {
   );
 
   late Future<List<RecyclingPoint>> _points;
+  LatLng? _userLocation;
+  bool _isLocating = false;
 
   @override
   void initState() {
     super.initState();
 
     _points = _recyclingService.fetchRecyclingPoints();
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _centerOnUser() async {
+    if (_isLocating) return;
+
+    ScaffoldMessenger.of(context).removeCurrentSnackBar();
+    setState(() {
+      _isLocating = true;
+      _userLocation = null;
+    });
+
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!mounted) return;
+      if (!serviceEnabled) {
+        _showLocationServiceDisabled();
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (!mounted) return;
+      // Android also reports denied before the first permission request.
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (!mounted) return;
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        _showLocationMessage(
+          'Consenti l’accesso alla posizione nelle impostazioni dell’app.',
+          openSettings: Geolocator.openAppSettings,
+        );
+        return;
+      }
+      if (permission == LocationPermission.denied) {
+        _showLocationMessage(
+          'Permesso di posizione negato. Tocca il pulsante per riprovare.',
+        );
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 30),
+        ),
+      );
+      if (!mounted) return;
+
+      final location = LatLng(position.latitude, position.longitude);
+      _mapController.move(location, _mapController.camera.zoom);
+      setState(() {
+        _userLocation = location;
+      });
+    } on LocationServiceDisabledException {
+      if (mounted) _showLocationServiceDisabled();
+    } catch (_) {
+      if (mounted) {
+        _showLocationMessage('Impossibile ottenere la posizione. Riprova.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLocating = false;
+        });
+      }
+    }
+  }
+
+  void _showLocationServiceDisabled() {
+    _showLocationMessage(
+      'La localizzazione è disattivata. Attivala nelle impostazioni.',
+      openSettings: Geolocator.openLocationSettings,
+    );
+  }
+
+  void _showLocationMessage(
+    String message, {
+    Future<bool> Function()? openSettings,
+  }) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger
+      ..removeCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          action: openSettings == null
+              ? null
+              : SnackBarAction(
+                  label: 'Impostazioni',
+                  onPressed: () async {
+                    try {
+                      if (await openSettings()) return;
+                    } catch (_) {
+                      // Show the same message if Android cannot open settings.
+                    }
+                    if (mounted) {
+                      _showLocationMessage(
+                        'Impossibile aprire le impostazioni di Android.',
+                      );
+                    }
+                  },
+                ),
+        ),
+      );
   }
 
   void _retry() {
@@ -91,8 +207,10 @@ class _MapScreenState extends State<MapScreen> {
 
         final theme = Theme.of(context);
         final colors = theme.colorScheme;
+        final userLocation = _userLocation;
 
         return FlutterMap(
+          mapController: _mapController,
           options: MapOptions(
             initialCenter: const LatLng(45.07, 7.675),
             initialZoom: 12,
@@ -117,8 +235,40 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ),
                   ),
+                if (userLocation != null)
+                  Marker(
+                    point: userLocation,
+                    width: 36,
+                    height: 36,
+                    child: Tooltip(
+                      message: 'La tua posizione',
+                      child: CircleAvatar(
+                        backgroundColor: colors.tertiaryContainer,
+                        foregroundColor: colors.onTertiaryContainer,
+                        child: const Icon(Icons.my_location, size: 20),
+                      ),
+                    ),
+                  ),
               ],
             ),
+            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: IconButton.filledTonal(
+                  onPressed: _isLocating ? null : _centerOnUser,
+                  tooltip: 'Centra sulla mia posizione',
+                  icon: _isLocating
+                      ? const SizedBox.square(
+                          dimension: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            semanticsLabel: 'Ricerca della posizione',
+                          ),
+                        )
+                      : const Icon(Icons.my_location),
+                ),
+              ),
             Align(
               alignment: Alignment.bottomRight,
               child: ColoredBox(

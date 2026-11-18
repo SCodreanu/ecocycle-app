@@ -2,15 +2,14 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
 import 'firebase_options.dart';
-import 'screens/home_shell.dart';
+import 'screens/auth/auth_gate.dart';
+import 'services/auth_service.dart';
 import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   runApp(const EcoCycleApp());
 }
@@ -23,6 +22,7 @@ class EcoCycleApp extends StatefulWidget {
 }
 
 class _EcoCycleAppState extends State<EcoCycleApp> {
+  late final AuthService _authService = AuthService();
   ThemeMode _themeMode = ThemeMode.light;
 
   void _toggleTheme() {
@@ -41,10 +41,7 @@ class _EcoCycleAppState extends State<EcoCycleApp> {
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: _themeMode,
-      home: HomeShell(
-        themeMode: _themeMode,
-        onToggleTheme: _toggleTheme,
-      ),
+      home: AuthGate(authService: _authService, onToggleTheme: _toggleTheme),
     );
   }
 }

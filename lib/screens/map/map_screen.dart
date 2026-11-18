@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 
 import '../../models/recycling_point.dart';
 import '../../services/recycling_service.dart';
@@ -12,6 +14,17 @@ class MapScreen extends StatefulWidget {
 
 class _MapScreenState extends State<MapScreen> {
   final _recyclingService = RecyclingService();
+
+  late final _tileLayer = TileLayer(
+    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    tileProvider: NetworkTileProvider(
+      headers: {
+        if (bool.fromEnvironment('dart.library.io'))
+          'User-Agent':
+              'EcoCycle/1.0 (+https://github.com/SCodreanu/ecocycle-app)',
+      },
+    ),
+  );
 
   late Future<List<RecyclingPoint>> _points;
 
@@ -76,43 +89,52 @@ class _MapScreenState extends State<MapScreen> {
           );
         }
 
-        return Column(
+        final theme = Theme.of(context);
+        final colors = theme.colorScheme;
+
+        return FlutterMap(
+          options: MapOptions(
+            initialCenter: const LatLng(45.07, 7.675),
+            initialZoom: 12,
+            maxZoom: 19,
+            backgroundColor: colors.surface,
+          ),
           children: [
-            Expanded(
-              child: ListView.builder(
-                itemCount: points.length,
-                itemBuilder: (context, index) {
-                  final point = points[index];
-
-                  final typeLabel =
-                      switch (point.recyclingType) {
-                    'centre' => 'Centro di riciclo',
-                    'container' =>
-                      'Contenitore per il riciclo',
-                    _ => 'Punto di riciclo',
-                  };
-
-                  return ListTile(
-                    leading:
-                        const Icon(Icons.recycling),
-                    title: Text(
-                      point.name ?? typeLabel,
+            _tileLayer,
+            MarkerLayer(
+              markers: [
+                for (final point in points)
+                  Marker(
+                    point: LatLng(point.latitude, point.longitude),
+                    width: 28,
+                    height: 28,
+                    child: Tooltip(
+                      message: point.name ?? 'Punto di riciclo',
+                      child: CircleAvatar(
+                        backgroundColor: colors.primary,
+                        foregroundColor: colors.onPrimary,
+                        child: const Icon(Icons.recycling, size: 18),
+                      ),
                     ),
-                    subtitle: Text(
-                      '${point.latitude.toStringAsFixed(5)}, '
-                      '${point.longitude.toStringAsFixed(5)}',
-                    ),
-                  );
-                },
-              ),
+                  ),
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: SelectableText(
-                'Dati © OpenStreetMap · openstreetmap.org/copyright',
-                style:
-                    Theme.of(context).textTheme.bodySmall,
-                textAlign: TextAlign.center,
+            Align(
+              alignment: Alignment.bottomRight,
+              child: ColoredBox(
+                color: colors.surface,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: SelectableText(
+                    '© OpenStreetMap contributors · ODbL\n'
+                    'https://www.openstreetmap.org/copyright',
+                    style: theme.textTheme.bodySmall,
+                    textAlign: TextAlign.right,
+                  ),
+                ),
               ),
             ),
           ],

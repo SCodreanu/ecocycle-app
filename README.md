@@ -1,4 +1,4 @@
-# ecocycle
+# Ecocycle
 
 A new Flutter project.
 

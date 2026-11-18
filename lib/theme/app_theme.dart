@@ -1,4 +1,4 @@
-import 'package:material_ui/material_ui.dart';
+import 'package:flutter/material.dart';
 
 class AppTheme {
   static const Color _seedColor = Color(0xFF4F8A66);

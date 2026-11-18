@@ -17,20 +17,30 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  int _selectedIndex = 0;
   bool _isSigningOut = false;
 
   Future<void> _signOut() async {
     if (_isSigningOut) return;
-    setState(() => _isSigningOut = true);
+
+    setState(() {
+      _isSigningOut = true;
+    });
 
     try {
       await widget.authService.signOut();
     } catch (error) {
       if (!mounted) return;
-      setState(() => _isSigningOut = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(AuthService.errorMessage(error))));
+
+      setState(() {
+        _isSigningOut = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AuthService.errorMessage(error)),
+        ),
+      );
     }
   }
 
@@ -49,7 +59,9 @@ class _HomeShellState extends State<HomeShell> {
                 ? 'Passa al tema chiaro'
                 : 'Passa al tema scuro',
             icon: Icon(
-              isDarkMode ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+              isDarkMode
+                  ? Icons.light_mode_outlined
+                  : Icons.dark_mode_outlined,
             ),
           ),
           IconButton(
@@ -58,29 +70,62 @@ class _HomeShellState extends State<HomeShell> {
             icon: _isSigningOut
                 ? const SizedBox.square(
                     dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
                   )
                 : const Icon(Icons.logout),
           ),
         ],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.recycling, size: 72, color: theme.colorScheme.primary),
-              const SizedBox(height: 16),
-              Text('EcoCycle', style: theme.textTheme.headlineMedium),
-              const SizedBox(height: 8),
-              Text(
-                'Hai effettuato l’accesso.',
-                style: theme.textTheme.bodyLarge,
-              ),
-            ],
-          ),
+      body: SafeArea(
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: const [
+            Center(
+              child: Text('La mappa sarà disponibile qui.'),
+            ),
+            Center(
+              child: Text('Qui troverai i tuoi premi.'),
+            ),
+            Center(
+              child: Text('Qui potrai inviare una segnalazione.'),
+            ),
+            Center(
+              child: Text('Qui troverai il tuo profilo.'),
+            ),
+          ],
         ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) {
+          setState(() {
+            _selectedIndex = index;
+          });
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map),
+            label: 'Mappa',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.emoji_events_outlined),
+            selectedIcon: Icon(Icons.emoji_events),
+            label: 'Premi',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.flag_outlined),
+            selectedIcon: Icon(Icons.flag),
+            label: 'Segnala',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profilo',
+          ),
+        ],
       ),
     );
   }

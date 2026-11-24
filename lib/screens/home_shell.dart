@@ -1,141 +1,109 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../models/recycling_point.dart';
 import '../services/auth_service.dart';
+import '../services/local_store.dart';
 import 'map/map_screen.dart';
+import 'rewards/rewards_screen.dart';
+import 'report/report_screen.dart';
+import 'profile/profile_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
     super.key,
     required this.authService,
     required this.onToggleTheme,
+    required this.user,
+    required this.store,
   });
-
   final AuthService authService;
   final VoidCallback onToggleTheme;
-
+  final User user;
+  final LocalStore store;
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
   int _selectedIndex = 0;
-  bool _isSigningOut = false;
-
-  Future<void> _signOut() async {
-    if (_isSigningOut) return;
-
-    setState(() {
-      _isSigningOut = true;
-    });
-
-    try {
-      await widget.authService.signOut();
-    } catch (error) {
-      if (!mounted) return;
-
+  RecyclingPoint? _reportPoint;
+  int _reportRevision = 0;
+  void _report(RecyclingPoint point) {
+    if (mounted)
       setState(() {
-        _isSigningOut = false;
+        _reportPoint = point;
+        _reportRevision++;
+        _selectedIndex = 2;
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content:
-              Text(AuthService.errorMessage(error)),
-        ),
-      );
-    }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDarkMode =
-        theme.brightness == Brightness.dark;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('EcoCycle'),
-        actions: [
-          IconButton(
-            onPressed: widget.onToggleTheme,
-            tooltip: isDarkMode
-                ? 'Passa al tema chiaro'
-                : 'Passa al tema scuro',
-            icon: Icon(
-              isDarkMode
-                  ? Icons.light_mode_outlined
-                  : Icons.dark_mode_outlined,
-            ),
-          ),
-          IconButton(
-            onPressed:
-                _isSigningOut ? null : _signOut,
-            tooltip: 'Esci',
-            icon: _isSigningOut
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child:
-                        CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Icon(Icons.logout),
-          ),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Row(
+        children: [
+          Image.asset('assets/eco.png', height: 30, width: 30),
+          const SizedBox(width: 8),
+          const Text('EcoCycle'),
         ],
       ),
-      body: SafeArea(
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: const [
-            MapScreen(),
-            Center(
-              child:
-                  Text('Qui troverai i tuoi premi.'),
-            ),
-            Center(
-              child: Text(
-                'Qui potrai inviare una segnalazione.',
-              ),
-            ),
-            Center(
-              child:
-                  Text('Qui troverai il tuo profilo.'),
-            ),
-          ],
+      actions: [
+        IconButton(
+          onPressed: widget.onToggleTheme,
+          tooltip: 'Cambia tema',
+          icon: Icon(
+            Theme.of(context).brightness == Brightness.dark
+                ? Icons.light_mode_outlined
+                : Icons.dark_mode_outlined,
+          ),
         ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            selectedIcon: Icon(Icons.map),
-            label: 'Mappa',
+      ],
+    ),
+    body: SafeArea(
+      child: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          MapScreen(onReport: _report),
+          RewardsScreen(store: widget.store),
+          ReportScreen(
+            store: widget.store,
+            point: _reportPoint,
+            linkRevision: _reportRevision,
           ),
-          NavigationDestination(
-            icon:
-                Icon(Icons.emoji_events_outlined),
-            selectedIcon:
-                Icon(Icons.emoji_events),
-            label: 'Premi',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.flag_outlined),
-            selectedIcon: Icon(Icons.flag),
-            label: 'Segnala',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.person_outline),
-            selectedIcon: Icon(Icons.person),
-            label: 'Profilo',
+          ProfileScreen(
+            user: widget.user,
+            authService: widget.authService,
+            onToggleTheme: widget.onToggleTheme,
           ),
         ],
       ),
-    );
-  }
+    ),
+    bottomNavigationBar: NavigationBar(
+      selectedIndex: _selectedIndex,
+      onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.map_outlined),
+          selectedIcon: Icon(Icons.map),
+          label: 'Mappa',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.emoji_events_outlined),
+          selectedIcon: Icon(Icons.emoji_events),
+          label: 'Premi',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.flag_outlined),
+          selectedIcon: Icon(Icons.flag),
+          label: 'Segnala',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.person_outline),
+          selectedIcon: Icon(Icons.person),
+          label: 'Profilo',
+        ),
+      ],
+    ),
+  );
 }

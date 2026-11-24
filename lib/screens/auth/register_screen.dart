@@ -1,69 +1,85 @@
 import 'package:flutter/material.dart';
 
 import '../../services/auth_service.dart';
+import '../../widgets/brand_header.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key, required this.authService});
-
   final AuthService authService;
-
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
-
-  bool _isLoading = false;
-  String? _errorMessage;
-
+  final _firstName = TextEditingController(),
+      _lastName = TextEditingController(),
+      _email = TextEditingController(),
+      _password = TextEditingController(),
+      _confirm = TextEditingController();
+  int _step = 0;
+  bool _loading = false, _hidePassword = true, _hideConfirm = true;
+  String? _error;
   @override
   void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    _confirmPasswordController.dispose();
+    for (final controller in [
+      _firstName,
+      _lastName,
+      _email,
+      _password,
+      _confirm,
+    ]) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
+  String? _required(String? value) =>
+      (value ?? '').trim().isEmpty ? 'Campo obbligatorio.' : null;
   Future<void> _submit() async {
-    if (_isLoading || !_formKey.currentState!.validate()) return;
-
+    if (_loading || !_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
+    if (_step == 0) {
+      setState(() => _step = 1);
+      return;
+    }
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _loading = true;
+      _error = null;
     });
-
     try {
       await widget.authService.register(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+        email: _email.text.trim(),
+        password: _password.text,
+        displayName: '${_firstName.text.trim()} ${_lastName.text.trim()}',
       );
     } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _errorMessage = AuthService.errorMessage(error);
-      });
+      if (mounted) setState(() => _error = AuthService.errorMessage(error));
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
     return PopScope(
-      canPop: !_isLoading,
+      canPop: !_loading,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Registrati'),
+          title: const Text('Registrazione'),
           leading: IconButton(
-            onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-            tooltip: 'Indietro',
             icon: const BackButtonIcon(),
+            tooltip: 'Indietro',
+            onPressed: _loading
+                ? null
+                : () {
+                    if (_step == 1) {
+                      setState(() => _step = 0);
+                    } else {
+                      Navigator.of(context).pop();
+                    }
+                  },
           ),
         ),
         body: SafeArea(
@@ -71,69 +87,121 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+                constraints: const BoxConstraints(maxWidth: 440),
                 child: Form(
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      TextFormField(
-                        controller: _emailController,
-                        enabled: !_isLoading,
-                        decoration: const InputDecoration(labelText: 'Email'),
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.next,
-                        validator: AuthService.validateEmail,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _passwordController,
-                        enabled: !_isLoading,
-                        decoration: const InputDecoration(
-                          labelText: 'Password',
-                        ),
-                        obscureText: true,
-                        textInputAction: TextInputAction.next,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Inserisci la password.';
-                          }
-                          if (value.length < 6) {
-                            return 'Usa almeno 6 caratteri.';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _confirmPasswordController,
-                        enabled: !_isLoading,
-                        decoration: const InputDecoration(
-                          labelText: 'Conferma password',
-                        ),
-                        obscureText: true,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Conferma la password.';
-                          }
-                          if (value != _passwordController.text) {
-                            return 'Le password non coincidono.';
-                          }
-                          return null;
-                        },
-                        onFieldSubmitted: (_) => _submit(),
-                      ),
+                      LinearProgressIndicator(value: (_step + 1) / 2),
                       const SizedBox(height: 24),
-                      if (_errorMessage case final message?)
-                        Text(
-                          message,
-                          style: TextStyle(color: theme.colorScheme.error),
-                        ),
-                      FilledButton(
-                        onPressed: _isLoading ? null : _submit,
-                        child: const Text('Crea account'),
+                      BrandHeader(
+                        title: _step == 0
+                            ? 'Crea il tuo account'
+                            : 'Ci siamo quasi!',
+                        subtitle: _step == 0
+                            ? 'Passaggio 1 di 2 · I tuoi dati'
+                            : 'Passaggio 2 di 2 · Proteggi il tuo account',
                       ),
-                      if (_isLoading) const LinearProgressIndicator(),
+                      if (_step == 0) ...[
+                        TextFormField(
+                          key: const ValueKey('firstName'),
+                          controller: _firstName,
+                          decoration: const InputDecoration(labelText: 'Nome'),
+                          textCapitalization: TextCapitalization.words,
+                          textInputAction: TextInputAction.next,
+                          validator: _required,
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          key: const ValueKey('lastName'),
+                          controller: _lastName,
+                          decoration: const InputDecoration(
+                            labelText: 'Cognome',
+                          ),
+                          textCapitalization: TextCapitalization.words,
+                          textInputAction: TextInputAction.next,
+                          validator: _required,
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          key: const ValueKey('email'),
+                          controller: _email,
+                          decoration: const InputDecoration(labelText: 'Email'),
+                          keyboardType: TextInputType.emailAddress,
+                          validator: AuthService.validateEmail,
+                        ),
+                      ],
+                      if (_step == 1) ...[
+                        TextFormField(
+                          key: const ValueKey('password'),
+                          enabled: !_loading,
+                          controller: _password,
+                          obscureText: _hidePassword,
+                          decoration: InputDecoration(
+                            labelText: 'Password',
+                            helperText: 'Almeno 8 caratteri',
+                            suffixIcon: IconButton(
+                              onPressed: () => setState(
+                                () => _hidePassword = !_hidePassword,
+                              ),
+                              icon: Icon(
+                                _hidePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                              ),
+                              tooltip: 'Mostra o nascondi password',
+                            ),
+                          ),
+                          validator: (value) => (value ?? '').length < 8
+                              ? 'Usa almeno 8 caratteri.'
+                              : null,
+                        ),
+                        const SizedBox(height: 14),
+                        TextFormField(
+                          key: const ValueKey('confirm'),
+                          enabled: !_loading,
+                          controller: _confirm,
+                          obscureText: _hideConfirm,
+                          decoration: InputDecoration(
+                            labelText: 'Conferma password',
+                            suffixIcon: IconButton(
+                              onPressed: () =>
+                                  setState(() => _hideConfirm = !_hideConfirm),
+                              icon: Icon(
+                                _hideConfirm
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                              ),
+                              tooltip: 'Mostra o nascondi password',
+                            ),
+                          ),
+                          validator: (value) => value == _password.text
+                              ? null
+                              : 'Le password non coincidono.',
+                          onFieldSubmitted: (_) => _submit(),
+                        ),
+                      ],
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Text(
+                            _error!,
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                        ),
+                      const SizedBox(height: 24),
+                      FilledButton(
+                        onPressed: _loading ? null : _submit,
+                        child: Text(_step == 0 ? 'Avanti' : 'Registrati'),
+                      ),
+                      if (_loading) const LinearProgressIndicator(),
+                      TextButton(
+                        onPressed: _loading
+                            ? null
+                            : () => Navigator.of(context).pop(),
+                        child: const Text('Hai già un account? Accedi'),
+                      ),
                     ],
                   ),
                 ),

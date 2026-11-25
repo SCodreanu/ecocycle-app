@@ -1,0 +1,40 @@
+workflows:
+  ios-unsigned:
+    name: EcoCycle iOS - Unsigned IPA
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+
+    environment:
+      flutter: 3.50.1
+      xcode: latest
+      vars:
+        BYPASS_PERMISSION_LOCATION_ALWAYS: "1"
+
+    scripts:
+      - name: Check environment
+        script: |
+          flutter --version
+          xcodebuild -version
+          plutil -lint ios/Runner/Info.plist
+
+      - name: Install dependencies
+        script: |
+          flutter pub get
+
+      - name: Build unsigned iOS application
+        script: |
+          flutter build ios --release --no-codesign \
+            --dart-define=ECOCYCLE_GOOGLE_SIGN_IN=true \
+            --dart-define=ECOCYCLE_APPLE_SIGN_IN=false
+
+      - name: Create IPA
+        script: |
+          set -e
+          mkdir -p build/ios/ipa
+          mkdir -p build/ios/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/
+          cd build/ios/ipa
+          ditto -c -k --keepParent Payload EcoCycle-v1.1.0-iOS-unsigned.ipa
+
+    artifacts:
+      - build/ios/ipa/*.ipa

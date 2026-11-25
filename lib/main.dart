@@ -6,6 +6,7 @@ import 'firebase_options.dart';
 import 'screens/auth/auth_gate.dart';
 import 'services/auth_service.dart';
 import 'theme/app_theme.dart';
+import 'widgets/eco_loader.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,7 @@ Future<void> main() async {
 class EcoCycleApp extends StatefulWidget {
   const EcoCycleApp({super.key, this.initialDark = false});
   final bool initialDark;
+
   @override
   State<EcoCycleApp> createState() => _EcoCycleAppState();
 }
@@ -30,7 +32,9 @@ class EcoCycleApp extends StatefulWidget {
 class _EcoCycleAppState extends State<EcoCycleApp> {
   late final AuthService _authService = AuthService();
   late bool _dark = widget.initialDark;
+  bool _showLaunch = true;
   Future<void> _themeWrite = Future.value();
+
   void _toggleTheme() {
     setState(() => _dark = !_dark);
     final value = _dark;
@@ -48,6 +52,18 @@ class _EcoCycleAppState extends State<EcoCycleApp> {
     theme: AppTheme.lightTheme,
     darkTheme: AppTheme.darkTheme,
     themeMode: _dark ? ThemeMode.dark : ThemeMode.light,
-    home: AuthGate(authService: _authService, onToggleTheme: _toggleTheme),
+    home: _showLaunch
+        ? Scaffold(
+            backgroundColor: const Color(0xFF0A1519),
+            body: Center(
+              child: EcoLoader(
+                launch: true,
+                onComplete: () {
+                  if (mounted) setState(() => _showLaunch = false);
+                },
+              ),
+            ),
+          )
+        : AuthGate(authService: _authService, onToggleTheme: _toggleTheme),
   );
 }

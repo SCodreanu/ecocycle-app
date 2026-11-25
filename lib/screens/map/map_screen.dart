@@ -9,6 +9,7 @@ import '../../models/bin_status.dart';
 import '../../models/recycling_point.dart';
 import '../../services/favorites_controller.dart';
 import '../../services/recycling_service.dart';
+import '../../widgets/eco_loader.dart';
 import 'bin_detail_screen.dart';
 
 class MapScreen extends StatefulWidget {
@@ -352,16 +353,22 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  Widget _loadingPoints() => const Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        EcoLoader(),
+        SizedBox(height: 12),
+        Text('Caricamento punti di riciclo…'),
+      ],
+    ),
+  );
+
   Widget _buildMap(BuildContext context) => FutureBuilder<List<RecyclingPoint>>(
     future: _points,
     builder: (context, snapshot) {
       final waiting = snapshot.connectionState == ConnectionState.waiting;
-      if (waiting && !snapshot.hasData)
-        return const Center(
-          child: CircularProgressIndicator(
-            semanticsLabel: 'Caricamento punti di riciclo',
-          ),
-        );
+      if (waiting && !snapshot.hasData) return _loadingPoints();
       if (snapshot.hasError)
         return _message(
           Icons.cloud_off_outlined,
@@ -369,8 +376,7 @@ class _MapScreenState extends State<MapScreen> {
           _retryFromEmptyOrError,
         );
       final all = snapshot.data ?? const <RecyclingPoint>[];
-      if (all.isEmpty && waiting)
-        return const Center(child: CircularProgressIndicator());
+      if (all.isEmpty && waiting) return _loadingPoints();
       if (all.isEmpty)
         return _message(
           Icons.search_off,

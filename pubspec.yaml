@@ -34,3 +34,4 @@ flutter:
   assets:
     - assets/eco.png
     - assets/branding/splash_logo.png
+    - assets/branding/google_logo.png

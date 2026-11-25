@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/eco_ui.dart';
+
 import 'package:geolocator/geolocator.dart';
 
 import '../../models/bin_status.dart';
@@ -112,18 +115,15 @@ class BinDetailScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text(point.title, style: theme.textTheme.headlineMedium),
+          EcoPageHeader(
+            title: point.title,
+            subtitle: point.address ?? 'Indirizzo non censito',
+          ),
           const SizedBox(height: 8),
           Text(
             'OpenStreetMap · ${point.key}',
-            style: theme.textTheme.bodyMedium,
+            style: theme.textTheme.bodySmall,
           ),
-          if (point.address != null)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.place_outlined),
-              title: Text(point.address!),
-            ),
           Text(
             '${point.latitude.toStringAsFixed(5)}, ${point.longitude.toStringAsFixed(5)}',
           ),
@@ -155,61 +155,81 @@ class BinDetailScreen extends StatelessWidget {
             const SizedBox(height: 28),
             Text('Stato del cassonetto', style: theme.textTheme.titleLarge),
             const SizedBox(height: 6),
-            const Text('Dati dimostrativi · non rilevati da sensori reali.'),
-            const SizedBox(height: 16),
-            Row(
+            const EcoNotice(
+              message: 'Dati dimostrativi · non rilevati da sensori reali.',
+            ),
+            const SizedBox(height: 12),
+            EcoPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      EcoIconBadge(
+                        icon: demo.status.icon,
+                        color: demo.status.color,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          demo.status.label,
+                          style: theme.textTheme.titleMedium,
+                        ),
+                      ),
+                      Text(
+                        '${demo.fillLevel}%',
+                        style: theme.textTheme.headlineLarge,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  LinearProgressIndicator(
+                    value: demo.fillLevel / 100,
+                    color: demo.status.color,
+                    minHeight: 9,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Riempimento stimato · simulazione',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            EcoMetricGrid(
               children: [
-                Icon(demo.status.icon, color: demo.status.color),
-                const SizedBox(width: 8),
-                Expanded(child: Text(demo.status.label)),
-                Text(
-                  '${demo.fillLevel}%',
-                  style: theme.textTheme.headlineMedium,
+                EcoMetric(
+                  icon: Icons.thermostat,
+                  label: 'Temperatura',
+                  value: '${demo.temperature.toStringAsFixed(1)} °C',
+                ),
+                EcoMetric(
+                  icon: Icons.inventory_2_outlined,
+                  label: 'Capacità totale',
+                  value: '${demo.capacity} L',
+                ),
+                EcoMetric(
+                  icon: Icons.inventory_outlined,
+                  label: 'Volume occupato',
+                  value: '${occupiedVolume.toStringAsFixed(1)} L',
+                ),
+                EcoMetric(
+                  icon: Icons.space_dashboard_outlined,
+                  label: 'Volume residuo',
+                  value: '${availableVolume.toStringAsFixed(1)} L',
+                ),
+                EcoMetric(
+                  icon: Icons.scale_outlined,
+                  label: 'Peso stimato',
+                  value: '${demo.weight.toStringAsFixed(1)} kg',
+                ),
+                EcoMetric(
+                  icon: Icons.air,
+                  label: 'Gas simulato',
+                  value: '${demo.gasReading.toStringAsFixed(1)} ppm',
                 ),
               ],
-            ),
-            const SizedBox(height: 10),
-            LinearProgressIndicator(
-              value: demo.fillLevel / 100,
-              color: demo.status.color,
-              minHeight: 9,
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.thermostat),
-              title: const Text('Temperatura'),
-              trailing: Text('${demo.temperature.toStringAsFixed(1)} °C'),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.inventory_2_outlined),
-              title: const Text('Capacità totale'),
-              trailing: Text('${demo.capacity} L'),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.inventory_outlined),
-              title: const Text('Volume occupato'),
-              trailing: Text('${occupiedVolume.toStringAsFixed(1)} L'),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.space_dashboard_outlined),
-              title: const Text('Volume residuo'),
-              trailing: Text('${availableVolume.toStringAsFixed(1)} L'),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.scale_outlined),
-              title: const Text('Peso stimato'),
-              trailing: Text('${demo.weight.toStringAsFixed(1)} kg'),
-            ),
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.air),
-              title: const Text('Lettura gas simulata'),
-              trailing: Text('${demo.gasReading.toStringAsFixed(1)} ppm'),
             ),
             if (demo.status == BinStatus.full ||
                 demo.status == BinStatus.maintenance ||

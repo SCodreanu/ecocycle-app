@@ -1,6 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+
+import '../../widgets/eco_ui.dart';
+
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -484,160 +487,176 @@ class _ReportScreenState extends State<ReportScreen> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Text('Segnala un problema', style: theme.textTheme.headlineMedium),
-        const SizedBox(height: 8),
-        const Text(
-          'Registra una segnalazione sul dispositivo. Nessun invio esterno.',
+        const EcoPageHeader(
+          title: 'Segnala un problema',
+          subtitle: 'Registra una segnalazione sul dispositivo.',
         ),
-        const SizedBox(height: 8),
-        const Text('* Campi obbligatori. Foto e posizione facoltative.'),
+        const SizedBox(height: 12),
+        const EcoNotice(
+          message: 'Nessun invio esterno. I campi con * sono obbligatori; foto e posizione sono facoltative.',
+        ),
         const SizedBox(height: 20),
-        Form(
-          key: _form,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              DropdownButtonFormField<String>(
-                key: ValueKey(_formRevision),
-                initialValue: _category,
-                isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Tipologia *'),
-                items: _categories
-                    .map(
-                      (category) => DropdownMenuItem(
-                        value: category,
-                        child: Text(category, overflow: TextOverflow.ellipsis),
-                      ),
-                    )
-                    .toList(),
-                onChanged: _busy
-                    ? null
-                    : (value) => setState(() => _category = value),
-                validator: (value) =>
-                    value == null ? 'Seleziona una tipologia.' : null,
-              ),
-              if (_category == 'Odore di gas / fumo')
-                const Card(
-                  child: Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Text(
-                      'Se rilevi fumo, odore di gas o un pericolo immediato, allontanati e chiama il 112 da un luogo sicuro. EcoCycle non invia richieste di soccorso.',
+        EcoPanel(
+          child: Form(
+            key: _form,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DropdownButtonFormField<String>(
+                  key: ValueKey(_formRevision),
+                  initialValue: _category,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Tipologia *'),
+                  items: _categories
+                      .map(
+                        (category) => DropdownMenuItem(
+                          value: category,
+                          child: Text(
+                            category,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: _busy
+                      ? null
+                      : (value) => setState(() => _category = value),
+                  validator: (value) =>
+                      value == null ? 'Seleziona una tipologia.' : null,
+                ),
+                if (_category == 'Odore di gas / fumo')
+                  const Padding(
+                    padding: EdgeInsets.only(top: 12),
+                    child: EcoNotice(
+                      warning: true,
+                      icon: Icons.warning_amber_rounded,
+                      message: 'Se rilevi fumo, odore di gas o un pericolo immediato, allontanati e chiama il 112 da un luogo sicuro. EcoCycle non invia richieste di soccorso.',
                     ),
                   ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _description,
+                  enabled: !_busy,
+                  maxLines: 4,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                    labelText: 'Descrizione *',
+                    alignLabelWithHint: true,
+                  ),
+                  validator: (value) => (value ?? '').trim().isEmpty
+                      ? 'Descrivi il problema.'
+                      : null,
                 ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _description,
-                enabled: !_busy,
-                maxLines: 4,
-                maxLength: 500,
-                decoration: const InputDecoration(
-                  labelText: 'Descrizione *',
-                  alignLabelWithHint: true,
+                const Divider(),
+                Text(
+                  'Posizione (facoltativa)',
+                  style: theme.textTheme.titleMedium,
                 ),
-                validator: (value) => (value ?? '').trim().isEmpty
-                    ? 'Descrivi il problema.'
-                    : null,
-              ),
-              if (_point case final point?)
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.place_outlined),
-                  title: Text(point.title),
-                  subtitle: Text('OSM ${point.key}'),
-                  trailing: IconButton(
+                const SizedBox(height: 8),
+                if (_point case final point?)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.place_outlined),
+                    title: Text(point.title),
+                    subtitle: Text('OSM ${point.key}'),
+                    trailing: IconButton(
+                      onPressed: _busy
+                          ? null
+                          : () => setState(() => _clearPoint = true),
+                      icon: const Icon(Icons.close),
+                      tooltip: 'Rimuovi punto',
+                    ),
+                  ),
+                if (_position != null)
+                  Text(
+                    'Posizione: ${_position!.latitude.toStringAsFixed(5)}, ${_position!.longitude.toStringAsFixed(5)}',
+                  ),
+                if (_position != null || _point != null)
+                  OutlinedButton.icon(
                     onPressed: _busy
                         ? null
-                        : () => setState(() => _clearPoint = true),
-                    icon: const Icon(Icons.close),
-                    tooltip: 'Rimuovi punto',
+                        : () => _showPosition(
+                            _position?.latitude ?? _point!.latitude,
+                            _position?.longitude ?? _point!.longitude,
+                          ),
+                    icon: const Icon(Icons.map_outlined),
+                    label: const Text('Anteprima posizione'),
                   ),
-                ),
-              if (_position != null)
-                Text(
-                  'Posizione: ${_position!.latitude.toStringAsFixed(5)}, ${_position!.longitude.toStringAsFixed(5)}',
-                ),
-              if (_position != null || _point != null)
+                if (_position != null)
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() {
+                            _position = null;
+                          }),
+                    child: const Text('Rimuovi posizione GPS'),
+                  ),
                 OutlinedButton.icon(
-                  onPressed: _busy
-                      ? null
-                      : () => _showPosition(
-                          _position?.latitude ?? _point!.latitude,
-                          _position?.longitude ?? _point!.longitude,
-                        ),
-                  icon: const Icon(Icons.map_outlined),
-                  label: const Text('Anteprima posizione'),
+                  onPressed: _busy ? null : _locate,
+                  icon: const Icon(Icons.my_location),
+                  label: const Text('Allega posizione attuale'),
                 ),
-              if (_position != null)
-                TextButton(
-                  onPressed: _busy
-                      ? null
-                      : () => setState(() {
-                          _position = null;
-                        }),
-                  child: const Text('Rimuovi posizione GPS'),
+                const Divider(),
+                Text(
+                  'Allegato fotografico (facoltativo)',
+                  style: theme.textTheme.titleMedium,
                 ),
-              OutlinedButton.icon(
-                onPressed: _busy ? null : _locate,
-                icon: const Icon(Icons.my_location),
-                label: const Text('Allega posizione attuale'),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Allegato fotografico (facoltativo)',
-                style: theme.textTheme.titleMedium,
-              ),
-              if (_photo != null) ...[
-                const SizedBox(height: 8),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(_photo!.path),
-                    height: 160,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, _, _) =>
-                        const Text('Foto non disponibile'),
+                if (_photo != null) ...[
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(_photo!.path),
+                      height: 160,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) =>
+                          const Text('Foto non disponibile'),
+                    ),
                   ),
-                ),
-                TextButton(
-                  onPressed: _busy ? null : () => _showPhoto(_photo!.path),
-                  child: const Text('Apri foto a schermo intero'),
-                ),
-                TextButton(
-                  onPressed: _busy ? null : () => setState(() => _photo = null),
-                  child: const Text('Rimuovi foto'),
-                ),
-              ],
-              Wrap(
-                spacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : () => _pick(ImageSource.camera),
-                    icon: const Icon(Icons.camera_alt_outlined),
-                    label: const Text('Fotocamera'),
+                  TextButton(
+                    onPressed: _busy ? null : () => _showPhoto(_photo!.path),
+                    child: const Text('Apri foto a schermo intero'),
                   ),
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : () => _pick(ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library_outlined),
-                    label: const Text('Galleria'),
+                  TextButton(
+                    onPressed: _busy
+                        ? null
+                        : () => setState(() => _photo = null),
+                    child: const Text('Rimuovi foto'),
                   ),
                 ],
-              ),
-              if (_error != null)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : () => _pick(ImageSource.camera),
+                      icon: const Icon(Icons.camera_alt_outlined),
+                      label: const Text('Fotocamera'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _busy
+                          ? null
+                          : () => _pick(ImageSource.gallery),
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text('Galleria'),
+                    ),
+                  ],
                 ),
-              const SizedBox(height: 16),
-              FilledButton(
-                onPressed: _busy ? null : _save,
-                child: const Text('Salva segnalazione'),
-              ),
-              if (_busy) const LinearProgressIndicator(),
-            ],
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: _busy ? null : _save,
+                  child: const Text('Salva segnalazione'),
+                ),
+                if (_busy) const LinearProgressIndicator(),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -667,19 +686,24 @@ class _ReportScreenState extends State<ReportScreen> {
             return Column(
               children: [
                 for (final record in records.reversed)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.flag_outlined),
-                    title: Text(record['category'] as String),
-                    subtitle: Text(
-                      '${_formatDate(record['date'])}\nSalvata localmente${record['photo'] != null ? ' · Foto' : ''}${record['latitude'] != null ? ' · Posizione' : ''}',
+                  Card(
+                    child: ListTile(
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      leading: const EcoIconBadge(icon: Icons.flag_outlined),
+                      title: Text(record['category'] as String),
+                      subtitle: Text(
+                        '${_formatDate(record['date'])}\nSalvata localmente${record['photo'] != null ? ' · Foto' : ''}${record['latitude'] != null ? ' · Posizione' : ''}',
+                      ),
+                      trailing: IconButton(
+                        tooltip: 'Elimina segnalazione',
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: _busy ? null : () => _deleteRecord(record),
+                      ),
+                      onTap: _busy ? null : () => _showRecord(record),
                     ),
-                    trailing: IconButton(
-                      tooltip: 'Elimina segnalazione',
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: _busy ? null : () => _deleteRecord(record),
-                    ),
-                    onTap: _busy ? null : () => _showRecord(record),
                   ),
               ],
             );

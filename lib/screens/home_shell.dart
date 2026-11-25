@@ -70,9 +70,13 @@ class _HomeShellState extends State<HomeShell> {
     appBar: AppBar(
       title: Row(
         children: [
-          Image.asset('assets/eco.png', height: 30, width: 30),
-          const SizedBox(width: 8),
-          const Text('EcoCycle'),
+          Image.asset('assets/eco.png', height: 32, width: 32),
+          const SizedBox(width: 10),
+          Text(
+            'EcoCycle',
+            style: Theme.of(context).textTheme.titleLarge
+                ?.copyWith(letterSpacing: -.5),
+          ),
         ],
       ),
       actions: [
@@ -114,34 +118,41 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ),
     ),
-    bottomNavigationBar: NavigationBar(
-      selectedIndex: _selectedIndex,
-      onDestinationSelected: (index) => setState(() {
-        _selectedIndex = index;
-        if (index == 1 || index == 3) _xpRevision++;
-      }),
-      destinations: const [
-        NavigationDestination(
-          icon: Icon(Icons.map_outlined),
-          selectedIcon: Icon(Icons.map),
-          label: 'Mappa',
+    bottomNavigationBar: DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
-        NavigationDestination(
-          icon: Icon(Icons.emoji_events_outlined),
-          selectedIcon: Icon(Icons.emoji_events),
-          label: 'Premi',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.flag_outlined),
-          selectedIcon: Icon(Icons.flag),
-          label: 'Segnala',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.person_outline),
-          selectedIcon: Icon(Icons.person),
-          label: 'Profilo',
-        ),
-      ],
+      ),
+      child: NavigationBar(
+        selectedIndex: _selectedIndex,
+        onDestinationSelected: (index) => setState(() {
+          _selectedIndex = index;
+          if (index == 1 || index == 3) _xpRevision++;
+        }),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.map_outlined),
+            selectedIcon: Icon(Icons.map),
+            label: 'Mappa',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.emoji_events_outlined),
+            selectedIcon: Icon(Icons.emoji_events),
+            label: 'Premi',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.flag_outlined),
+            selectedIcon: Icon(Icons.flag),
+            label: 'Segnala',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profilo',
+          ),
+        ],
+      ),
     ),
   );
 }

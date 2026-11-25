@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/eco_ui.dart';
+
 import '../../services/local_store.dart';
 import '../../services/xp_service.dart';
 
@@ -204,9 +206,10 @@ class _RewardsScreenState extends State<RewardsScreen> {
       return ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          Text('I tuoi premi', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 6),
-          const Text('Programma fedeltà dimostrativo · dati locali'),
+          const EcoPageHeader(
+            title: 'I tuoi premi',
+            subtitle: 'Programma fedeltà dimostrativo · dati locali',
+          ),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(20),
@@ -217,14 +220,27 @@ class _RewardsScreenState extends State<RewardsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Saldo disponibile', style: theme.textTheme.labelLarge),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Saldo disponibile',
+                        style: theme.textTheme.labelLarge,
+                      ),
+                    ),
+                    const EcoIconBadge(icon: Icons.workspace_premium_outlined),
+                  ],
+                ),
                 Text(
                   '${xp.balance} XP',
                   style: theme.textTheme.headlineLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                Text('XP totali: ${xp.totalXp} · Spesi: ${xp.spentXp}'),
+                Text(
+                  'XP totali: ${xp.totalXp} · Spesi: ${xp.spentXp}',
+                  style: theme.textTheme.bodySmall,
+                ),
                 const SizedBox(height: 12),
                 Text(
                   'Livello ${xp.level} · ${xp.totalXp % 500} / 500 XP al prossimo livello',
@@ -249,8 +265,9 @@ class _RewardsScreenState extends State<RewardsScreen> {
                   : 'Dichiara un riciclo (+${xp.recyclingCount == 0 ? 50 : 20} XP)',
             ),
           ),
-          const Text(
-            'Una attività autodichiarata al giorno. Le segnalazioni locali assegnano 50 XP al giorno al massimo.',
+          const SizedBox(height: 8),
+          const EcoNotice(
+            message: 'Una attività autodichiarata al giorno. Le segnalazioni locali assegnano 50 XP al giorno al massimo.',
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -293,30 +310,68 @@ class _RewardsScreenState extends State<RewardsScreen> {
           ),
           const SizedBox(height: 24),
           Text('Premi disponibili', style: theme.textTheme.titleLarge),
-          for (final reward in _catalog) ...[
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(child: Icon(reward.icon)),
-              title: Text(reward.name),
-              subtitle: Text('${reward.cost} XP'),
-              trailing: xp.redeemed(reward.id)
-                  ? const Icon(
-                      Icons.check_circle_outline,
-                      semanticLabel: 'Riscattato',
-                    )
-                  : FilledButton.tonal(
-                      onPressed: _busy || xp.balance < reward.cost
-                          ? null
-                          : () => _redeem(reward.id, reward.name, reward.cost),
-                      child: Text(
-                        xp.balance < reward.cost
-                            ? 'XP insufficienti'
-                            : 'Riscatta',
+          const SizedBox(height: 10),
+          EcoMetricGrid(
+            children: [
+              for (final reward in _catalog)
+                EcoPanel(
+                  padding: const EdgeInsets.all(12),
+                  color: xp.redeemed(reward.id)
+                      ? theme.colorScheme.primaryContainer
+                      : null,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      EcoIconBadge(icon: reward.icon, size: 42),
+                      const SizedBox(height: 10),
+                      Text(reward.name, style: theme.textTheme.titleMedium),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${reward.cost} XP',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
                       ),
-                    ),
-            ),
-            const Divider(height: 1),
-          ],
+                      const SizedBox(height: 10),
+                      if (xp.redeemed(reward.id))
+                        const Row(
+                          children: [
+                            Icon(Icons.check_circle_outline, size: 18),
+                            SizedBox(width: 5),
+                            Flexible(child: Text('Riscattato')),
+                          ],
+                        )
+                      else
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton.tonal(
+                            onPressed: _busy || xp.balance < reward.cost
+                                ? null
+                                : () => _redeem(
+                                    reward.id,
+                                    reward.name,
+                                    reward.cost,
+                                  ),
+                            style: FilledButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 10,
+                              ),
+                              minimumSize: const Size(0, 40),
+                            ),
+                            child: Text(
+                              xp.balance < reward.cost
+                                  ? 'XP insufficienti'
+                                  : 'Riscatta',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 24),
           Text(
             'Storico attività di riciclo',

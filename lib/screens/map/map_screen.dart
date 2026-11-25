@@ -1,5 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../widgets/eco_ui.dart';
+
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -53,6 +58,7 @@ class _MapScreenState extends State<MapScreen> {
   bool _locating = false, _list = false, _tileFailed = false;
   String _query = '', _material = '';
   bool _onlyFavorites = false;
+  int _zoomBucket = 12;
   BinStatus? _status;
   String _locationMessage = 'Posizione non richiesta';
   Future<bool> Function()? _settings;
@@ -77,6 +83,7 @@ class _MapScreenState extends State<MapScreen> {
   void _retryFromEmptyOrError() {
     _controller.dispose();
     _controller = MapController();
+    _zoomBucket = 12;
     _tileLayer = _createTileLayer();
     _retry();
   }
@@ -256,57 +263,80 @@ class _MapScreenState extends State<MapScreen> {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
+      isScrollControlled: true,
       builder: (sheet) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(point.title, style: Theme.of(sheet).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              Text(point.address ?? 'Indirizzo non censito'),
-              Text(
-                point.materials.isEmpty
-                    ? 'Materiali non disponibili'
-                    : point.materials.join(' · '),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (point.isContainer) ...[
-                const SizedBox(height: 12),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Icon(demo.status.icon, color: demo.status.color),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text('${demo.status.label} · ${demo.fillLevel}%'),
+                    EcoIconBadge(
+                      icon: point.isContainer
+                          ? demo.status.icon
+                          : Icons.recycling,
+                      color: point.isContainer ? demo.status.color : null,
+                      size: 48,
                     ),
-                    const Text('Demo'),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        point.title,
+                        style: Theme.of(sheet).textTheme.titleLarge,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                LinearProgressIndicator(
-                  value: demo.fillLevel / 100,
-                  color: demo.status.color,
+                Text(point.address ?? 'Indirizzo non censito'),
+                Text(
+                  point.materials.isEmpty
+                      ? 'Materiali non disponibili'
+                      : point.materials.join(' · '),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (point.isContainer) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(demo.status.icon, color: demo.status.color),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${demo.status.label} · ${demo.fillLevel}%',
+                        ),
+                      ),
+                      const Text('Demo'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: demo.fillLevel / 100,
+                    color: demo.status.color,
+                  ),
+                ],
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(sheet).pop();
+                    _detail(point, allPoints);
+                  },
+                  child: const Text('Vedi dettaglio'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(sheet).pop();
+                    widget.onReport(point);
+                  },
+                  child: const Text('Segnala un problema'),
                 ),
               ],
-              const SizedBox(height: 20),
-              FilledButton(
-                onPressed: () {
-                  Navigator.of(sheet).pop();
-                  _detail(point, allPoints);
-                },
-                child: const Text('Vedi dettaglio'),
-              ),
-              TextButton(
-                onPressed: () {
-                  Navigator.of(sheet).pop();
-                  widget.onReport(point);
-                },
-                child: const Text('Segnala un problema'),
-              ),
-            ],
+            ),
           ),
         ),
       ),
@@ -316,8 +346,8 @@ class _MapScreenState extends State<MapScreen> {
   Widget _pointRow(RecyclingPoint point, List<RecyclingPoint> allPoints) {
     final demo = BinStatusData.forPoint(point);
     return ListTile(
-      leading: Icon(
-        point.isContainer ? demo.status.icon : Icons.recycling,
+      leading: EcoIconBadge(
+        icon: point.isContainer ? demo.status.icon : Icons.recycling,
         color: point.isContainer ? demo.status.color : null,
       ),
       title: Text(point.title),
@@ -340,6 +370,205 @@ class _MapScreenState extends State<MapScreen> {
         ],
       ),
       onTap: () => _detail(point, allPoints),
+    );
+  }
+
+  Future<void> _chooseMaterial(List<String> materials, String active) async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheet) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheet).height * .72,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Text(
+                  'Materiali',
+                  style: Theme.of(sheet).textTheme.titleLarge,
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final material in ['', ...materials])
+                      ListTile(
+                        title: Text(
+                          material.isEmpty ? 'Tutti i materiali' : material,
+                        ),
+                        trailing: active == material
+                            ? const Icon(Icons.check_circle_outline)
+                            : null,
+                        onTap: () => Navigator.of(sheet).pop(material),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted && result != null) setState(() => _material = result);
+  }
+
+  Future<void> _chooseStatus() async {
+    final result = await showModalBottomSheet<int>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Text(
+                'Stato del cassonetto',
+                style: Theme.of(sheet).textTheme.titleLarge,
+              ),
+            ),
+            ListTile(
+              title: const Text('Tutti gli stati'),
+              trailing: _status == null ? const Icon(Icons.check) : null,
+              onTap: () => Navigator.of(sheet).pop(-1),
+            ),
+            for (final status in BinStatus.values)
+              ListTile(
+                leading: Icon(status.icon, color: status.color),
+                title: Text(status.label),
+                trailing: _status == status ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.of(sheet).pop(status.index),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (mounted && result != null)
+      setState(() => _status = result == -1 ? null : BinStatus.values[result]);
+  }
+
+  Widget _filterButton(String label, IconData icon, VoidCallback onTap) =>
+      OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          minimumSize: const Size(0, 42),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            const Icon(Icons.expand_more, size: 18),
+          ],
+        ),
+      );
+
+  // A geographic grid groups nearby points at low zoom. At street level each
+  // point is rendered individually. Counts refer to the currently filtered data.
+  List<Marker> _buildMarkers(
+    List<RecyclingPoint> points,
+    List<RecyclingPoint> all,
+    ColorScheme colors,
+  ) {
+    final cellSize = .018 / math.pow(2, _zoomBucket - 12);
+    final groups = <String, List<RecyclingPoint>>{};
+    for (final point in points) {
+      final key = _zoomBucket >= 16
+          ? point.key
+          : '${(point.latitude / cellSize).floor()}:${(point.longitude / cellSize).floor()}';
+      groups.putIfAbsent(key, () => []).add(point);
+    }
+    return [
+      for (final group in groups.values)
+        if (group.length > 1)
+          _clusterMarker(group, colors)
+        else
+          _singleMarker(group.first, all, colors),
+    ];
+  }
+
+  Marker _clusterMarker(List<RecyclingPoint> points, ColorScheme colors) {
+    final center = LatLng(
+      points.fold<double>(0, (sum, point) => sum + point.latitude) /
+          points.length,
+      points.fold<double>(0, (sum, point) => sum + point.longitude) /
+          points.length,
+    );
+    return Marker(
+      point: center,
+      width: 48,
+      height: 48,
+      child: Tooltip(
+        message: '${points.length} punti di raccolta',
+        child: GestureDetector(
+          onTap: () => _controller.move(
+            center,
+            math.min(19.0, _controller.camera.zoom + 2.0),
+          ),
+          child: Center(
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: colors.primary,
+                border: Border.all(color: colors.surface, width: 3),
+              ),
+              child: Text(
+                '${points.length}',
+                style: TextStyle(
+                  color: colors.onPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Marker _singleMarker(
+    RecyclingPoint point,
+    List<RecyclingPoint> all,
+    ColorScheme colors,
+  ) {
+    final demo = BinStatusData.forPoint(point);
+    final color = point.isContainer
+        ? demo.status.color
+        : const Color(0xff176b66);
+    return Marker(
+      point: LatLng(point.latitude, point.longitude),
+      width: 44,
+      height: 44,
+      child: GestureDetector(
+        onTap: () => _preview(point, all),
+        child: Tooltip(
+          message: point.title,
+          child: Center(
+            child: Container(
+              width: 31,
+              height: 31,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: Icon(
+                point.isContainer ? demo.status.icon : Icons.recycling,
+                color: Colors.white,
+                size: 16,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -454,44 +683,20 @@ class _MapScreenState extends State<MapScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: DropdownButton<String>(
-                    isExpanded: true,
-                    value: activeMaterial,
-                    items: [
-                      const DropdownMenuItem(
-                        value: '',
-                        child: Text('Tutti i materiali'),
-                      ),
-                      ...materials.map(
-                        (m) => DropdownMenuItem(
-                          value: m,
-                          child: Text(m, overflow: TextOverflow.ellipsis),
-                        ),
-                      ),
-                    ],
-                    onChanged: (value) =>
-                        setState(() => _material = value ?? ''),
+                  child: _filterButton(
+                    activeMaterial.isEmpty
+                        ? 'Tutti i materiali'
+                        : activeMaterial,
+                    Icons.recycling,
+                    () => _chooseMaterial(materials, activeMaterial),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
                 Expanded(
-                  child: DropdownButton<BinStatus?>(
-                    isExpanded: true,
-                    value: _status,
-                    hint: const Text('Tutti gli stati'),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('Tutti gli stati'),
-                      ),
-                      ...BinStatus.values.map(
-                        (s) => DropdownMenuItem(
-                          value: s,
-                          child: Text(s.label, overflow: TextOverflow.ellipsis),
-                        ),
-                      ),
-                    ],
-                    onChanged: (value) => setState(() => _status = value),
+                  child: _filterButton(
+                    _status?.label ?? 'Tutti gli stati',
+                    Icons.tune,
+                    _chooseStatus,
                   ),
                 ),
               ],
@@ -580,45 +785,70 @@ class _MapScreenState extends State<MapScreen> {
                             : const LatLng(45.07, 7.675),
                         initialZoom: 12,
                         maxZoom: 19,
+                        onPositionChanged: (camera, _) {
+                          final zoom = camera.zoom.floor();
+                          if (zoom != _zoomBucket) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted && zoom != _zoomBucket)
+                                setState(() => _zoomBucket = zoom);
+                            });
+                          }
+                        },
                         backgroundColor: colors.surface,
                       ),
                       children: [
-                        _tileLayer,
+                        ColorFiltered(
+                          colorFilter:
+                              Theme.of(context).brightness == Brightness.dark
+                              ? const ColorFilter.matrix(<double>[
+                                  .077,
+                                  -.751,
+                                  -.076,
+                                  0,
+                                  212,
+                                  -.223,
+                                  -.451,
+                                  -.076,
+                                  0,
+                                  218,
+                                  -.223,
+                                  -.751,
+                                  .224,
+                                  0,
+                                  216,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                ])
+                              : const ColorFilter.matrix(<double>[
+                                  1,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                ]),
+                          child: _tileLayer,
+                        ),
                         MarkerLayer(
                           markers: [
-                            for (final point in points)
-                              Marker(
-                                point: LatLng(point.latitude, point.longitude),
-                                width: 44,
-                                height: 44,
-                                child: GestureDetector(
-                                  onTap: () => _preview(point, all),
-                                  child: Tooltip(
-                                    message: point.title,
-                                    child: Center(
-                                      child: CircleAvatar(
-                                        radius: 17,
-                                        backgroundColor: point.isContainer
-                                            ? BinStatusData.forPoint(point)
-                                                  .status
-                                                  .color
-                                            : colors.primaryContainer,
-                                        foregroundColor: point.isContainer
-                                            ? Colors.white
-                                            : colors.onPrimaryContainer,
-                                        child: Icon(
-                                          point.isContainer
-                                              ? BinStatusData.forPoint(point)
-                                                    .status
-                                                    .icon
-                                              : Icons.recycling,
-                                          size: 19,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
+                            ..._buildMarkers(points, all, colors),
                             if (location != null)
                               Marker(
                                 point: location,
@@ -675,6 +905,9 @@ class _MapScreenState extends State<MapScreen> {
                                     const ListTile(
                                       title: Text(
                                         'Legenda · stati dimostrativi',
+                                      ),
+                                      subtitle: Text(
+                                        'I cerchi numerati raggruppano più punti. Tocca per ingrandire.',
                                       ),
                                     ),
                                     for (final status in BinStatus.values)
@@ -759,6 +992,10 @@ class _MapScreenState extends State<MapScreen> {
                         child: Text('Nessun risultato per i filtri.'),
                       )
                     : ListView.separated(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         itemCount: points.length,
                         separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (_, index) =>
@@ -774,7 +1011,7 @@ class _MapScreenState extends State<MapScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Stati dei cassonetti dimostrativi',
+                      'Stati simulati · tocca i gruppi per ingrandire',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
@@ -797,7 +1034,7 @@ class _MapScreenState extends State<MapScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 44),
+          EcoIconBadge(icon: icon, size: 68),
           const SizedBox(height: 12),
           Text(text, textAlign: TextAlign.center),
           const SizedBox(height: 12),

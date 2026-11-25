@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/eco_ui.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/brand_header.dart';
 import 'forgot_password_screen.dart';
@@ -76,146 +77,158 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const BrandHeader(
-                      title: 'Bentornato in EcoCycle',
-                      subtitle: 'Accedi per esplorare i punti di raccolta e partecipare al cambiamento.',
-                    ),
-                    SegmentedButton<int>(
-                      segments: const [
-                        ButtonSegment(value: 0, label: Text('Registrati')),
-                        ButtonSegment(value: 1, label: Text('Accedi')),
-                      ],
-                      selected: const {1},
-                      onSelectionChanged: _loading
-                          ? null
-                          : (value) {
-                              if (value.contains(0))
-                                Navigator.of(context).push<void>(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: EcoPanel(
+                padding: const EdgeInsets.all(22),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const BrandHeader(
+                        title: 'Bentornato in EcoCycle',
+                        subtitle: 'Accedi per esplorare i punti di raccolta e partecipare al cambiamento.',
+                      ),
+                      SegmentedButton<int>(
+                        segments: const [
+                          ButtonSegment(value: 0, label: Text('Registrati')),
+                          ButtonSegment(value: 1, label: Text('Accedi')),
+                        ],
+                        selected: const {1},
+                        onSelectionChanged: _loading
+                            ? null
+                            : (value) {
+                                if (value.contains(0))
+                                  Navigator.of(context).push<void>(
+                                    MaterialPageRoute(
+                                      builder: (_) => RegisterScreen(
+                                        authService: widget.authService,
+                                      ),
+                                    ),
+                                  );
+                              },
+                      ),
+                      const SizedBox(height: 20),
+                      TextFormField(
+                        controller: _emailController,
+                        enabled: !_loading,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.mail_outline),
+                        ),
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.email],
+                        validator: AuthService.validateEmail,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _passwordController,
+                        enabled: !_loading,
+                        obscureText: _hide,
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            onPressed: () => setState(() => _hide = !_hide),
+                            icon: Icon(
+                              _hide
+                                  ? Icons.visibility_outlined
+                                  : Icons.visibility_off_outlined,
+                            ),
+                            tooltip: _hide
+                                ? 'Mostra password'
+                                : 'Nascondi password',
+                          ),
+                        ),
+                        validator: (value) => value == null || value.isEmpty
+                            ? 'Inserisci la password.'
+                            : null,
+                        onFieldSubmitted: (_) => _submit(),
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: _loading
+                              ? null
+                              : () => Navigator.of(context).push<void>(
                                   MaterialPageRoute(
-                                    builder: (_) => RegisterScreen(
+                                    builder: (_) => ForgotPasswordScreen(
                                       authService: widget.authService,
                                     ),
                                   ),
-                                );
-                            },
-                    ),
-                    const SizedBox(height: 24),
-                    TextFormField(
-                      controller: _emailController,
-                      enabled: !_loading,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.mail_outline),
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      autofillHints: const [AutofillHints.email],
-                      validator: AuthService.validateEmail,
-                    ),
-                    const SizedBox(height: 14),
-                    TextFormField(
-                      controller: _passwordController,
-                      enabled: !_loading,
-                      obscureText: _hide,
-                      decoration: InputDecoration(
-                        labelText: 'Password',
-                        prefixIcon: const Icon(Icons.lock_outline),
-                        suffixIcon: IconButton(
-                          onPressed: () => setState(() => _hide = !_hide),
-                          icon: Icon(
-                            _hide
-                                ? Icons.visibility_outlined
-                                : Icons.visibility_off_outlined,
-                          ),
-                          tooltip: _hide
-                              ? 'Mostra password'
-                              : 'Nascondi password',
+                                ),
+                          child: const Text('Password dimenticata?'),
                         ),
                       ),
-                      validator: (value) => value == null || value.isEmpty
-                          ? 'Inserisci la password.'
-                          : null,
-                      onFieldSubmitted: (_) => _submit(),
-                    ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            _error!,
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                        ),
+                      FilledButton(
+                        onPressed: _loading ? null : _submit,
+                        child: const Text('Accedi'),
+                      ),
+                      if (_loading) const LinearProgressIndicator(),
+                      if (AuthService.googleEnabled ||
+                          AuthService.appleEnabled) ...[
+                        const SizedBox(height: 18),
+                        const Row(
+                          children: [
+                            Expanded(child: Divider()),
+                            Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('oppure'),
+                            ),
+                            Expanded(child: Divider()),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (AuthService.googleEnabled)
+                          OutlinedButton.icon(
+                            onPressed: _loading
+                                ? null
+                                : () =>
+                                      _run(widget.authService.signInWithGoogle),
+                            icon: Image.asset(
+                              'assets/branding/google_logo.png',
+                              width: 22,
+                              height: 22,
+                              fit: BoxFit.contain,
+                              excludeFromSemantics: true,
+                            ),
+                            label: const Text('Continua con Google'),
+                          ),
+                        if (AuthService.appleEnabled)
+                          OutlinedButton.icon(
+                            onPressed: _loading
+                                ? null
+                                : () =>
+                                      _run(widget.authService.signInWithApple),
+                            icon: const Icon(Icons.apple),
+                            label: const Text('Continua con Apple'),
+                          ),
+                      ],
+                      TextButton(
                         onPressed: _loading
                             ? null
                             : () => Navigator.of(context).push<void>(
                                 MaterialPageRoute(
-                                  builder: (_) => ForgotPasswordScreen(
+                                  builder: (_) => RegisterScreen(
                                     authService: widget.authService,
                                   ),
                                 ),
                               ),
-                        child: const Text('Password dimenticata?'),
+                        child: const Text('Non hai un account? Registrati'),
                       ),
-                    ),
-                    if (_error != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          _error!,
-                          style: TextStyle(color: theme.colorScheme.error),
-                        ),
-                      ),
-                    FilledButton(
-                      onPressed: _loading ? null : _submit,
-                      child: const Text('Accedi'),
-                    ),
-                    if (_loading) const LinearProgressIndicator(),
-                    if (AuthService.googleEnabled ||
-                        AuthService.appleEnabled) ...[
-                      const SizedBox(height: 18),
-                      const Row(
-                        children: [
-                          Expanded(child: Divider()),
-                          Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: Text('oppure'),
-                          ),
-                          Expanded(child: Divider()),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (AuthService.googleEnabled)
-                        OutlinedButton(
-                          onPressed: _loading
-                              ? null
-                              : () => _run(widget.authService.signInWithGoogle),
-                          child: const Text('Continua con Google'),
-                        ),
-                      if (AuthService.appleEnabled)
-                        OutlinedButton.icon(
-                          onPressed: _loading
-                              ? null
-                              : () => _run(widget.authService.signInWithApple),
-                          icon: const Icon(Icons.apple),
-                          label: const Text('Continua con Apple'),
-                        ),
                     ],
-                    TextButton(
-                      onPressed: _loading
-                          ? null
-                          : () => Navigator.of(context).push<void>(
-                              MaterialPageRoute(
-                                builder: (_) => RegisterScreen(
-                                  authService: widget.authService,
-                                ),
-                              ),
-                            ),
-                      child: const Text('Non hai un account? Registrati'),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

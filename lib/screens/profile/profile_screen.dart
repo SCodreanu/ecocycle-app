@@ -1,5 +1,11 @@
+import 'dart:io';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+
+import '../../widgets/eco_ui.dart';
 
 import '../../models/recycling_point.dart';
 import '../../services/auth_service.dart';
@@ -33,11 +39,127 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _busy = false;
   String? _updatedName;
   Future<XpSummary>? _xp;
+  final _picker = ImagePicker();
+  File? _localPhoto;
+  bool _photoLoading = true;
+  int _photoRevision = 0;
+
+  // A separate private directory for every Firebase user.
+  Future<File> _photoFile() async {
+    final uid = Uri.encodeComponent(widget.user.uid);
+    final root = await getApplicationDocumentsDirectory();
+    return File('${root.path}/profile_photos/$uid/avatar.image');
+  }
+
+  Future<void> _loadPhoto() async {
+    try {
+      final file = await _photoFile();
+      final exists = await file.exists();
+      if (mounted) {
+        setState(() {
+          _localPhoto = exists ? file : null;
+        });
+      }
+    } catch (_) {
+      // The provider photo or initials remain available as a fallback.
+    } finally {
+      if (mounted) setState(() => _photoLoading = false);
+    }
+  }
+
+  Future<void> _choosePhoto() async {
+    if (_busy || _photoLoading) return;
+    setState(() => _busy = true);
+    File? temporary;
+    try {
+      final selected = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 640,
+        maxHeight: 640,
+        imageQuality: 85,
+      );
+      if (!mounted || selected == null) return;
+      final target = await _photoFile();
+      await target.parent.create(recursive: true);
+      // Copy into private app storage before replacing the previous photo.
+      temporary = await File(selected.path).copy('${target.path}.tmp');
+      await temporary.rename(target.path);
+      await FileImage(target).evict();
+      if (mounted) {
+        setState(() {
+          _localPhoto = target;
+          _photoRevision++;
+        });
+        _message('Foto profilo aggiornata su questo dispositivo.');
+      }
+    } catch (_) {
+      _message('Impossibile salvare la foto. Riprova.');
+    } finally {
+      try {
+        if (temporary != null && await temporary.exists()) {
+          await temporary.delete();
+        }
+      } catch (_) {
+        // A temporary file can be overwritten on the next selection.
+      }
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _removePhoto() async {
+    if (_busy || _photoLoading || _localPhoto == null) return;
+    setState(() => _busy = true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Rimuovere la foto profilo?'),
+          content: const Text(
+            'Tornerà visibile la foto Google, se disponibile, oppure la tua iniziale.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annulla'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Rimuovi'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true || !mounted) return;
+      final file = await _photoFile();
+      if (await file.exists()) await file.delete();
+      await FileImage(file).evict();
+      if (mounted) {
+        setState(() {
+          _localPhoto = null;
+          _photoRevision++;
+        });
+        _message('Foto personalizzata rimossa.');
+      }
+    } catch (_) {
+      _message('Impossibile rimuovere la foto. Riprova.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  ImageProvider? get _avatarImage {
+    final local = _localPhoto;
+    if (local != null) return FileImage(local);
+    final url = widget.user.photoURL;
+    if (url != null && url.isNotEmpty) return NetworkImage(url);
+    return null;
+  }
 
   @override
   void initState() {
     super.initState();
     _loadXp();
+    _loadPhoto();
   }
 
   void _loadXp() {
@@ -242,105 +364,154 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final theme = Theme.of(context);
     final name = _updatedName ?? widget.user.displayName ?? 'Utente EcoCycle';
     final favorites = widget.favorites;
+    final avatar = _avatarImage;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Text('Il tuo profilo', style: theme.textTheme.headlineMedium),
-        const SizedBox(height: 24),
-        Row(
-          children: [
-            CircleAvatar(
-              radius: 32,
-              foregroundImage: widget.user.photoURL == null
-                  ? null
-                  : NetworkImage(widget.user.photoURL!),
-              onForegroundImageError: widget.user.photoURL == null
-                  ? null
-                  : (_, _) {},
-              child: Text(
-                name.trim().isEmpty ? 'E' : name.trim()[0].toUpperCase(),
-                style: theme.textTheme.headlineSmall,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        const EcoPageHeader(
+          title: 'Il tuo profilo',
+          subtitle: 'Gestisci il tuo account e i tuoi preferiti.',
+        ),
+        const SizedBox(height: 18),
+        EcoPanel(
+          child: Row(
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  Text(name, style: theme.textTheme.titleLarge),
-                  Text(widget.user.email ?? 'Email non disponibile'),
+                  CircleAvatar(
+                    key: ValueKey(_photoRevision),
+                    radius: 36,
+                    foregroundImage: avatar,
+                    onForegroundImageError: avatar == null ? null : (_, _) {},
+                    child: Text(
+                      name.trim().isEmpty ? 'E' : name.trim()[0].toUpperCase(),
+                      style: theme.textTheme.headlineSmall,
+                    ),
+                  ),
+                  Positioned(
+                    right: -6,
+                    bottom: -6,
+                    child: IconButton.filledTonal(
+                      tooltip: 'Modifica foto profilo',
+                      onPressed: _busy || _photoLoading ? null : _choosePhoto,
+                      icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                    ),
+                  ),
                 ],
               ),
-            ),
-          ],
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(name, style: theme.textTheme.titleLarge),
+                    Text(
+                      widget.user.email ?? 'Email non disponibile',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 24),
         Text('Account', style: theme.textTheme.titleMedium),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.edit_outlined),
-          title: const Text('Modifica nome'),
-          onTap: _busy ? null : _editName,
-          trailing: const Icon(Icons.chevron_right),
-        ),
-        if (widget.user.email != null &&
-            widget.user.providerData.any(
-              (provider) => provider.providerId == 'password',
-            ))
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.lock_outline),
-            title: const Text('Reimposta password'),
-            onTap: _busy
-                ? null
-                : () async {
-                    setState(() => _busy = true);
-                    try {
-                      await widget.authService.sendPasswordResetEmail(
-                        widget.user.email!,
-                      );
-                      _message(
-                        'Se l’account esiste, riceverai un link di reset.',
-                      );
-                    } catch (error) {
-                      _message(AuthService.errorMessage(error));
-                    } finally {
-                      if (mounted) setState(() => _busy = false);
-                    }
-                  },
+        const SizedBox(height: 8),
+        EcoPanel(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Modifica nome'),
+                onTap: _busy ? null : _editName,
+                trailing: const Icon(Icons.chevron_right),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.image_outlined),
+                title: const Text('Modifica foto profilo'),
+                subtitle: const Text('Salvata su questo dispositivo'),
+                onTap: _busy || _photoLoading ? null : _choosePhoto,
+                trailing: const Icon(Icons.chevron_right),
+              ),
+              if (_localPhoto != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.delete_outline),
+                  title: const Text('Rimuovi foto personalizzata'),
+                  onTap: _busy || _photoLoading ? null : _removePhoto,
+                ),
+              if (widget.user.email != null &&
+                  widget.user.providerData.any(
+                    (provider) => provider.providerId == 'password',
+                  ))
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.lock_outline),
+                  title: const Text('Reimposta password'),
+                  onTap: _busy
+                      ? null
+                      : () async {
+                          setState(() => _busy = true);
+                          try {
+                            await widget.authService.sendPasswordResetEmail(
+                              widget.user.email!,
+                            );
+                            _message(
+                              'Se l’account esiste, riceverai un link di reset.',
+                            );
+                          } catch (error) {
+                            _message(AuthService.errorMessage(error));
+                          } finally {
+                            if (mounted) setState(() => _busy = false);
+                          }
+                        },
+                ),
+            ],
           ),
+        ),
         if (_xp != null) ...[
-          const Divider(),
-          const SizedBox(height: 12),
-          _xpSection(),
+          const SizedBox(height: 16),
+          EcoPanel(child: _xpSection()),
         ],
         if (favorites != null) ...[
-          const Divider(),
-          const SizedBox(height: 12),
-          _favoritesSection(favorites),
+          const SizedBox(height: 16),
+          EcoPanel(child: _favoritesSection(favorites)),
         ],
         const Divider(),
         const SizedBox(height: 12),
         Text('Impostazioni', style: theme.textTheme.titleMedium),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          secondary: const Icon(Icons.dark_mode_outlined),
-          title: const Text('Tema scuro'),
-          value: theme.brightness == Brightness.dark,
-          onChanged: (_) => widget.onToggleTheme(),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.info_outline),
-          title: const Text('Informazioni su EcoCycle'),
-          onTap: () => showAboutDialog(
-            context: context,
-            applicationName: 'EcoCycle',
-            applicationVersion: '1.0',
-            applicationIcon: Image.asset('assets/eco.png', width: 44),
+        const SizedBox(height: 8),
+        EcoPanel(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+          child: Column(
             children: [
-              const Text(
-                'Progetto ITS. Dati geografici da OpenStreetMap / Overpass. Stati, premi e segnalazioni sono dimostrativi; nessun servizio IoT reale.',
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.dark_mode_outlined),
+                title: const Text('Tema scuro'),
+                value: theme.brightness == Brightness.dark,
+                onChanged: (_) => widget.onToggleTheme(),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.info_outline),
+                title: const Text('Informazioni su EcoCycle'),
+                onTap: () => showAboutDialog(
+                  context: context,
+                  applicationName: 'EcoCycle',
+                  applicationVersion: '1.0',
+                  applicationIcon: Image.asset('assets/eco.png', width: 44),
+                  children: [
+                    const Text(
+                      'Progetto ITS. Dati geografici da OpenStreetMap / Overpass. Stati, premi e segnalazioni sono dimostrativi; nessun servizio IoT reale.',
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

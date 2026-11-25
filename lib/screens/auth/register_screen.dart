@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/eco_ui.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/brand_header.dart';
 
@@ -85,124 +86,135 @@ class _RegisterScreenState extends State<RegisterScreen> {
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(18),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      LinearProgressIndicator(value: (_step + 1) / 2),
-                      const SizedBox(height: 24),
-                      BrandHeader(
-                        title: _step == 0
-                            ? 'Crea il tuo account'
-                            : 'Ci siamo quasi!',
-                        subtitle: _step == 0
-                            ? 'Passaggio 1 di 2 · I tuoi dati'
-                            : 'Passaggio 2 di 2 · Proteggi il tuo account',
-                      ),
-                      if (_step == 0) ...[
-                        TextFormField(
-                          key: const ValueKey('firstName'),
-                          controller: _firstName,
-                          decoration: const InputDecoration(labelText: 'Nome'),
-                          textCapitalization: TextCapitalization.words,
-                          textInputAction: TextInputAction.next,
-                          validator: _required,
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: EcoPanel(
+                  padding: const EdgeInsets.all(22),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        LinearProgressIndicator(value: (_step + 1) / 2),
+                        const SizedBox(height: 24),
+                        BrandHeader(
+                          title: _step == 0
+                              ? 'Crea il tuo account'
+                              : 'Ci siamo quasi!',
+                          subtitle: _step == 0
+                              ? 'Passaggio 1 di 2 · I tuoi dati'
+                              : 'Passaggio 2 di 2 · Proteggi il tuo account',
                         ),
-                        const SizedBox(height: 14),
-                        TextFormField(
-                          key: const ValueKey('lastName'),
-                          controller: _lastName,
-                          decoration: const InputDecoration(
-                            labelText: 'Cognome',
+                        if (_step == 0) ...[
+                          TextFormField(
+                            key: const ValueKey('firstName'),
+                            controller: _firstName,
+                            decoration: const InputDecoration(
+                              labelText: 'Nome',
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.next,
+                            validator: _required,
                           ),
-                          textCapitalization: TextCapitalization.words,
-                          textInputAction: TextInputAction.next,
-                          validator: _required,
-                        ),
-                        const SizedBox(height: 14),
-                        TextFormField(
-                          key: const ValueKey('email'),
-                          controller: _email,
-                          decoration: const InputDecoration(labelText: 'Email'),
-                          keyboardType: TextInputType.emailAddress,
-                          validator: AuthService.validateEmail,
-                        ),
-                      ],
-                      if (_step == 1) ...[
-                        TextFormField(
-                          key: const ValueKey('password'),
-                          enabled: !_loading,
-                          controller: _password,
-                          obscureText: _hidePassword,
-                          decoration: InputDecoration(
-                            labelText: 'Password',
-                            helperText: 'Almeno 8 caratteri',
-                            suffixIcon: IconButton(
-                              onPressed: () => setState(
-                                () => _hidePassword = !_hidePassword,
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            key: const ValueKey('lastName'),
+                            controller: _lastName,
+                            decoration: const InputDecoration(
+                              labelText: 'Cognome',
+                              prefixIcon: Icon(Icons.person_outline),
+                            ),
+                            textCapitalization: TextCapitalization.words,
+                            textInputAction: TextInputAction.next,
+                            validator: _required,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            key: const ValueKey('email'),
+                            controller: _email,
+                            decoration: const InputDecoration(
+                              labelText: 'Email',
+                              prefixIcon: Icon(Icons.mail_outline),
+                            ),
+                            keyboardType: TextInputType.emailAddress,
+                            validator: AuthService.validateEmail,
+                          ),
+                        ],
+                        if (_step == 1) ...[
+                          TextFormField(
+                            key: const ValueKey('password'),
+                            enabled: !_loading,
+                            controller: _password,
+                            obscureText: _hidePassword,
+                            decoration: InputDecoration(
+                              labelText: 'Password',
+                              helperText: 'Almeno 8 caratteri',
+                              suffixIcon: IconButton(
+                                onPressed: () => setState(
+                                  () => _hidePassword = !_hidePassword,
+                                ),
+                                icon: Icon(
+                                  _hidePassword
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                ),
+                                tooltip: 'Mostra o nascondi password',
                               ),
-                              icon: Icon(
-                                _hidePassword
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
+                            ),
+                            validator: (value) => (value ?? '').length < 8
+                                ? 'Usa almeno 8 caratteri.'
+                                : null,
+                          ),
+                          const SizedBox(height: 14),
+                          TextFormField(
+                            key: const ValueKey('confirm'),
+                            enabled: !_loading,
+                            controller: _confirm,
+                            obscureText: _hideConfirm,
+                            decoration: InputDecoration(
+                              labelText: 'Conferma password',
+                              suffixIcon: IconButton(
+                                onPressed: () => setState(
+                                  () => _hideConfirm = !_hideConfirm,
+                                ),
+                                icon: Icon(
+                                  _hideConfirm
+                                      ? Icons.visibility_outlined
+                                      : Icons.visibility_off_outlined,
+                                ),
+                                tooltip: 'Mostra o nascondi password',
                               ),
-                              tooltip: 'Mostra o nascondi password',
+                            ),
+                            validator: (value) => value == _password.text
+                                ? null
+                                : 'Le password non coincidono.',
+                            onFieldSubmitted: (_) => _submit(),
+                          ),
+                        ],
+                        if (_error != null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: Text(
+                              _error!,
+                              style: TextStyle(color: theme.colorScheme.error),
                             ),
                           ),
-                          validator: (value) => (value ?? '').length < 8
-                              ? 'Usa almeno 8 caratteri.'
-                              : null,
+                        const SizedBox(height: 24),
+                        FilledButton(
+                          onPressed: _loading ? null : _submit,
+                          child: Text(_step == 0 ? 'Avanti' : 'Registrati'),
                         ),
-                        const SizedBox(height: 14),
-                        TextFormField(
-                          key: const ValueKey('confirm'),
-                          enabled: !_loading,
-                          controller: _confirm,
-                          obscureText: _hideConfirm,
-                          decoration: InputDecoration(
-                            labelText: 'Conferma password',
-                            suffixIcon: IconButton(
-                              onPressed: () =>
-                                  setState(() => _hideConfirm = !_hideConfirm),
-                              icon: Icon(
-                                _hideConfirm
-                                    ? Icons.visibility_outlined
-                                    : Icons.visibility_off_outlined,
-                              ),
-                              tooltip: 'Mostra o nascondi password',
-                            ),
-                          ),
-                          validator: (value) => value == _password.text
+                        if (_loading) const LinearProgressIndicator(),
+                        TextButton(
+                          onPressed: _loading
                               ? null
-                              : 'Le password non coincidono.',
-                          onFieldSubmitted: (_) => _submit(),
+                              : () => Navigator.of(context).pop(),
+                          child: const Text('Hai già un account? Accedi'),
                         ),
                       ],
-                      if (_error != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 12),
-                          child: Text(
-                            _error!,
-                            style: TextStyle(color: theme.colorScheme.error),
-                          ),
-                        ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _loading ? null : _submit,
-                        child: Text(_step == 0 ? 'Avanti' : 'Registrati'),
-                      ),
-                      if (_loading) const LinearProgressIndicator(),
-                      TextButton(
-                        onPressed: _loading
-                            ? null
-                            : () => Navigator.of(context).pop(),
-                        child: const Text('Hai già un account? Accedi'),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/eco_ui.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/brand_header.dart';
 
@@ -47,57 +48,60 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(18),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const BrandHeader(
-                      title: 'Password dimenticata?',
-                      subtitle: 'Inserisci il tuo indirizzo email. Ti invieremo un link per reimpostare la password se esiste un account.',
-                    ),
-                    TextFormField(
-                      controller: _email,
-                      enabled: !_loading && !_completed,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        prefixIcon: Icon(Icons.mail_outline),
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: EcoPanel(
+                padding: const EdgeInsets.all(22),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const BrandHeader(
+                        title: 'Password dimenticata?',
+                        subtitle: 'Inserisci il tuo indirizzo email. Ti invieremo un link per reimpostare la password se esiste un account.',
                       ),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: AuthService.validateEmail,
-                      onFieldSubmitted: (_) => _submit(),
-                    ),
-                    const SizedBox(height: 16),
-                    if (_error != null)
-                      Text(
-                        _error!,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
+                      TextFormField(
+                        controller: _email,
+                        enabled: !_loading && !_completed,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.mail_outline),
                         ),
+                        keyboardType: TextInputType.emailAddress,
+                        validator: AuthService.validateEmail,
+                        onFieldSubmitted: (_) => _submit(),
                       ),
-                    if (_completed) ...[
-                      const ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.mark_email_read_outlined),
-                        title: Text('Controlla la tua email'),
-                        subtitle: Text(
-                          'Se esiste un account, riceverai un link per reimpostare la password.',
+                      const SizedBox(height: 16),
+                      if (_error != null)
+                        Text(
+                          _error!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                         ),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Torna al login'),
-                      ),
-                    ] else
-                      FilledButton(
-                        onPressed: _loading ? null : _submit,
-                        child: const Text('Invia link'),
-                      ),
-                    if (_loading) const LinearProgressIndicator(),
-                  ],
+                      if (_completed) ...[
+                        const ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.mark_email_read_outlined),
+                          title: Text('Controlla la tua email'),
+                          subtitle: Text(
+                            'Se esiste un account, riceverai un link per reimpostare la password.',
+                          ),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Torna al login'),
+                        ),
+                      ] else
+                        FilledButton(
+                          onPressed: _loading ? null : _submit,
+                          child: const Text('Invia link'),
+                        ),
+                      if (_loading) const LinearProgressIndicator(),
+                    ],
+                  ),
                 ),
               ),
             ),

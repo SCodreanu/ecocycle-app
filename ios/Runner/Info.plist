@@ -77,5 +77,21 @@
 
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>EcoCycle utilizza la posizione per individuare i cassonetti vicini e localizzare le segnalazioni.</string>
+
+	<key>GIDClientID</key>
+	<string>222127221076-9fioofbuodh2d030dnqsft8kqq1pluqo.apps.googleusercontent.com</string>
+
+	<key>CFBundleURLTypes</key>
+	<array>
+    <dict>
+        <key>CFBundleTypeRole</key>
+        <string>Editor</string>
+        <key>CFBundleURLSchemes</key>
+        <array>
+            <string>com.googleusercontent.apps.222127221076-9fioofbuodh2d030dnqsft8kqq1pluqo</string>
+        </array>
+    </dict>
+	</array>
+
 	</dict>
 </plist>

@@ -109,6 +109,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _locate() async {
     if (_busy) return;
+    final linkRevision = widget.linkRevision;
     setState(() {
       _busy = true;
       _error = null;
@@ -144,7 +145,9 @@ class _ReportScreenState extends State<ReportScreen> {
           timeLimit: Duration(seconds: 30),
         ),
       );
-      if (mounted) setState(() => _position = position);
+      if (mounted && linkRevision == widget.linkRevision) {
+        setState(() => _position = position);
+      }
     } catch (_) {
       if (mounted) setState(() => _error = 'Posizione non disponibile.');
     } finally {
@@ -154,6 +157,7 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Future<void> _save() async {
     if (_busy || !_form.currentState!.validate()) return;
+    final linkRevision = widget.linkRevision;
     FocusScope.of(context).unfocus();
     setState(() {
       _busy = true;
@@ -179,7 +183,9 @@ class _ReportScreenState extends State<ReportScreen> {
         _category = null;
         _photo = null;
         _position = null;
-        _clearPoint = true;
+        if (linkRevision == widget.linkRevision) {
+          _clearPoint = true;
+        }
       });
       await showDialog<void>(
         context: context,

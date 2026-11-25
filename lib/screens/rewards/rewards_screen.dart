@@ -58,13 +58,32 @@ class _RewardsScreenState extends State<RewardsScreen> {
   late final _service = XpService(widget.store);
   late Future<XpSummary> _summary = _service.load();
   bool _busy = false;
+  bool _refreshPending = false;
 
   @override
   void didUpdateWidget(covariant RewardsScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.refreshRevision != widget.refreshRevision && !_busy) {
-      _summary = _service.load();
+
+    if (oldWidget.refreshRevision != widget.refreshRevision) {
+      if (_busy) {
+        _refreshPending = true;
+      } else {
+        _summary = _service.load();
+      }
     }
+  }
+
+  void _finishOperation() {
+    if (!mounted) return;
+
+    setState(() {
+      _busy = false;
+
+      if (_refreshPending) {
+        _refreshPending = false;
+        _summary = _service.load();
+      }
+    });
   }
 
   void _reload() {
@@ -126,7 +145,7 @@ class _RewardsScreenState extends State<RewardsScreen> {
       _message('Impossibile aggiornare le attività. Riprova.');
       if (mounted) _reload();
     } finally {
-      if (mounted) setState(() => _busy = false);
+      _finishOperation();
     }
   }
 
@@ -165,7 +184,7 @@ class _RewardsScreenState extends State<RewardsScreen> {
       _message('Impossibile completare il riscatto. Riprova.');
       if (mounted) _reload();
     } finally {
-      if (mounted) setState(() => _busy = false);
+      _finishOperation();
     }
   }
 

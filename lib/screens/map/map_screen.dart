@@ -16,6 +16,7 @@ import '../../services/favorites_controller.dart';
 import '../../services/map_filter_service.dart';
 import '../../services/recycling_service.dart';
 import '../../widgets/eco_loader.dart';
+import '../../widgets/map/map_markers.dart';
 import 'bin_detail_screen.dart';
 
 class MapScreen extends StatefulWidget {
@@ -421,111 +422,6 @@ class _MapScreenState extends State<MapScreen> {
         ),
       );
 
-  // A geographic grid groups nearby points at low zoom. At street level each
-  // point is rendered individually. Counts refer to the currently filtered data.
-  List<Marker> _buildMarkers(
-    List<RecyclingPoint> points,
-    List<RecyclingPoint> all,
-    ColorScheme colors,
-  ) {
-    final cellSize = .018 / math.pow(2, _zoomBucket - 12);
-    final groups = <String, List<RecyclingPoint>>{};
-    for (final point in points) {
-      final key = _zoomBucket >= 16
-          ? point.key
-          : '${(point.latitude / cellSize).floor()}:${(point.longitude / cellSize).floor()}';
-      groups.putIfAbsent(key, () => []).add(point);
-    }
-    return [
-      for (final group in groups.values)
-        if (group.length > 1)
-          _clusterMarker(group, colors)
-        else
-          _singleMarker(group.first, all, colors),
-    ];
-  }
-
-  Marker _clusterMarker(List<RecyclingPoint> points, ColorScheme colors) {
-    final center = LatLng(
-      points.fold<double>(0, (sum, point) => sum + point.latitude) /
-          points.length,
-      points.fold<double>(0, (sum, point) => sum + point.longitude) /
-          points.length,
-    );
-    return Marker(
-      point: center,
-      width: 48,
-      height: 48,
-      child: Tooltip(
-        message: '${points.length} punti di raccolta',
-        child: GestureDetector(
-          onTap: () => _controller.move(
-            center,
-            math.min(19.0, _controller.camera.zoom + 2.0),
-          ),
-          child: Center(
-            child: Container(
-              width: 40,
-              height: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: colors.primary,
-                border: Border.all(color: colors.surface, width: 3),
-              ),
-              child: Text(
-                '${points.length}',
-                style: TextStyle(
-                  color: colors.onPrimary,
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Marker _singleMarker(
-    RecyclingPoint point,
-    List<RecyclingPoint> all,
-    ColorScheme colors,
-  ) {
-    final demo = BinStatusData.forPoint(point);
-    final color = point.isContainer
-        ? demo.status.color
-        : const Color(0xff176b66);
-    return Marker(
-      point: LatLng(point.latitude, point.longitude),
-      width: 44,
-      height: 44,
-      child: GestureDetector(
-        onTap: () => _preview(point, all),
-        child: Tooltip(
-          message: point.title,
-          child: Center(
-            child: Container(
-              width: 31,
-              height: 31,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: color,
-                border: Border.all(color: Colors.white, width: 2),
-              ),
-              child: Icon(
-                point.isContainer ? demo.status.icon : Icons.recycling,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final favorites = widget.favorites;
@@ -778,7 +674,16 @@ class _MapScreenState extends State<MapScreen> {
                         ),
                         MarkerLayer(
                           markers: [
-                            ..._buildMarkers(points, all, colors),
+                            ...MapMarkers.build(
+                              points: points,
+                              zoomBucket: _zoomBucket,
+                              colors: colors,
+                              onPointTap: (point) => _preview(point, all),
+                              onClusterTap: (center) => _controller.move(
+                                center,
+                                math.min(19.0, _controller.camera.zoom + 2.0),
+                              ),
+                            ),
                             if (location != null)
                               Marker(
                                 point: location,

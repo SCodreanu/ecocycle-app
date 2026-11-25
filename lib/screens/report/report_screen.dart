@@ -9,11 +9,10 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../models/recycling_point.dart';
 import '../../services/local_store.dart';
-import '../../services/xp_service.dart';
+import '../../services/report_service.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({
@@ -35,9 +34,8 @@ class _ReportScreenState extends State<ReportScreen> {
   final _form = GlobalKey<FormState>();
   final _description = TextEditingController();
   final _picker = ImagePicker();
-  late Future<List<Map<String, dynamic>>> _records = widget.store.readRecords(
-    'reports',
-  );
+  late final _service = ReportService(widget.store);
+  late Future<List<Map<String, dynamic>>> _records = _service.load();
   String? _category, _error;
   XFile? _photo;
   Position? _position;
@@ -125,9 +123,11 @@ class _ReportScreenState extends State<ReportScreen> {
         return;
       }
       var permission = await Geolocator.checkPermission();
+      if (!mounted) return;
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
+      if (!mounted) return;
       if (permission != LocationPermission.always &&
           permission != LocationPermission.whileInUse) {
         if (mounted) {
@@ -159,48 +159,16 @@ class _ReportScreenState extends State<ReportScreen> {
       _busy = true;
       _error = null;
     });
-    File? copied;
-    var saved = false;
     try {
-      final records = await widget.store.readRecords('reports');
-      final date = DateTime.now();
-      final creditedDays = XpSummary.uniqueDays([
-        ...records,
-        ...await widget.store.readRecords('report_xp_days'),
-      ]);
-      final earnedXp = !creditedDays.contains(XpSummary.dayKey(date));
-      final point = _point;
-      final position = _position;
-      final category = _category;
-      final description = _description.text.trim();
-      if (_photo != null) {
-        final root = await getApplicationDocumentsDirectory();
-        final directory = Directory(
-          '${root.path}/reports/${Uri.encodeComponent(widget.store.uid)}',
-        );
-        await directory.create(recursive: true);
-        // Keep the original encoded image bytes in private app storage.
-        copied = await File(_photo!.path)
-            .copy('${directory.path}/${date.microsecondsSinceEpoch}.image');
-      }
-      final record = <String, dynamic>{
-        'id': date.microsecondsSinceEpoch.toString(),
-        'date': date.toIso8601String(),
-        'category': category,
-        'description': description,
-        'point': point?.key,
-        'latitude': position?.latitude ?? point?.latitude,
-        'longitude': position?.longitude ?? point?.longitude,
-        'locationSource': position != null
-            ? 'gps'
-            : point != null
-            ? 'osm'
-            : null,
-        'photo': copied?.path,
-      };
-      final next = [...records, record];
-      await widget.store.writeRecords('reports', next);
-      saved = true;
+      final result = await _service.save(
+        category: _category!,
+        description: _description.text,
+        point: _point,
+        position: _position,
+        photoPath: _photo?.path,
+      );
+      final next = result.records;
+      final earnedXp = result.earnedXp;
       if (!mounted) return;
       widget.onXpChanged?.call();
       _description.clear();
@@ -230,11 +198,6 @@ class _ReportScreenState extends State<ReportScreen> {
         ),
       );
     } catch (_) {
-      if (!saved && copied != null) {
-        try {
-          await copied.delete();
-        } catch (_) {}
-      }
       if (mounted) {
         setState(
           () => _error = 'Impossibile salvare la segnalazione. Riprova.',
@@ -380,30 +343,10 @@ class _ReportScreenState extends State<ReportScreen> {
       _busy = true;
     });
     try {
-      final records = await widget.store.readRecords('reports');
-      final matching = records.where((r) => r['id'] == record['id']).toList();
-      if (matching.isEmpty) return;
-      // Archive only the day before removing the source of the XP credit.
-      await XpService(widget.store).preserveReportCredit(matching.first);
-      final next = records.where((r) => r['id'] != record['id']).toList();
-      await widget.store.writeRecords('reports', next);
-      var photoRemoved = true;
-      final photo = matching.first['photo'];
-      if (photo is String && !next.any((r) => r['photo'] == photo)) {
-        try {
-          final root = await getApplicationDocumentsDirectory();
-          final folder = Directory(
-            '${root.path}/reports/${Uri.encodeComponent(widget.store.uid)}',
-          );
-          final file = File(photo);
-          if (file.parent.absolute.path == folder.absolute.path &&
-              await file.exists()) {
-            await file.delete();
-          }
-        } catch (_) {
-          photoRemoved = false;
-        }
-      }
+      final result = await _service.delete(record['id']);
+      if (result == null) return;
+      final next = result.records;
+      final photoRemoved = result.photoRemoved;
       if (!mounted) return;
       setState(() {
         _records = Future.value(next);
@@ -677,7 +620,7 @@ class _ReportScreenState extends State<ReportScreen> {
             if (snapshot.hasError) {
               return TextButton(
                 onPressed: () {
-                  final records = widget.store.readRecords('reports');
+                  final records = _service.load();
 
                   setState(() {
                     _records = records;

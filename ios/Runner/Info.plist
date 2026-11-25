@@ -68,5 +68,14 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+
+		<key>NSCameraUsageDescription</key>
+		<string>EcoCycle utilizza la fotocamera per fotografare i problemi da segnalare.</string>
+
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>EcoCycle accede alle foto selezionate per le segnalazioni e il profilo.</string>
+
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>EcoCycle utilizza la posizione per individuare i cassonetti vicini e localizzare le segnalazioni.</string>
 	</dict>
 </plist>

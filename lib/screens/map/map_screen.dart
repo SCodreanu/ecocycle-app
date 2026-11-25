@@ -65,8 +65,9 @@ class _MapScreenState extends State<MapScreen> {
   String _locationMessage = 'Posizione non richiesta';
   Future<bool> Function()? _settings;
   bool get _supportsLocation =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
-  @override
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
   void initState() {
     super.initState();
     _points = _service.fetchRecyclingPoints();

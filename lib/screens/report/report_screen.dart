@@ -54,7 +54,10 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   void initState() {
     super.initState();
-    _recoverPhoto();
+
+    if (Platform.isAndroid) {
+      _recoverPhoto();
+    }
   }
 
   @override

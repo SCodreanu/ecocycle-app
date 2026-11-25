@@ -17,7 +17,7 @@
 
 
 
-EcoCycle is an Android-first Flutter and Dart mobile application developed for the ITS Web & Mobile App Developer final project. It helps citizens discover recycling points in the Turin area and explore a demonstrative smart waste management experience.
+EcoCycle is a cross-platform Flutter and Dart mobile application developed for the ITS Web & Mobile App Developer final project. It helps citizens discover recycling points in the Turin area and explore a demonstrative smart waste management experience.
 
 ## Features
 
@@ -80,7 +80,7 @@ assets/           # logo and branding assets
 test/             # model, service, XP and widget tests
 ```
 
-## Verification and APK
+## Verification and builds
 
 ```bash
 flutter analyze --no-fatal-infos
@@ -88,7 +88,27 @@ flutter test
 flutter build apk --release
 ```
 
-The APK is normally created at `build/app/outputs/flutter-apk/app-release.apk`. The signing certificate of the actual APK must match the Firebase OAuth configuration for Google sign-in. Test the installed APK before submission. Android is the primary target; iOS has not been validated on a Mac.
+The APK is normally created at `build/app/outputs/flutter-apk/app-release.apk`. The signing certificate of the actual APK must match the Firebase OAuth configuration for Google sign-in. Test the installed APK before submission. 
+
+
+## Supported platforms
+
+| Platform | Package | Installation | Validation |
+| --- | --- | --- | --- |
+| Android | APK | Direct installation | Android emulator |
+| iOS | IPA | AltStore Classic | iPhone 12 Pro |
+
+### iOS installation
+
+1. Download the unsigned IPA from GitHub Releases.
+2. Install and configure AltStore Classic using AltServer.
+3. Open AltStore and select the IPA from the My Apps section.
+4. Sign and install the application using your Apple Account.
+
+The iOS application is compiled using Codemagic on macOS. A free Apple Account requires the application to be refreshed every seven days. No paid Apple Developer membership is required for personal sideloading.
+
+The application is not distributed through the Apple App Store.
+
 
 ## Credits and documentation
 

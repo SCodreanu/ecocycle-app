@@ -7,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:ecocycle/widgets/eco_loader.dart';
+
 void main() {
   test('GET preserves the existing Overpass query', () async {
     final client = MockClient((request) async {
@@ -63,7 +65,7 @@ void main() {
         ),
       ),
     );
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(EcoLoader), findsOneWidget);
     response.complete(http.Response('Unavailable', 503));
     await tester.pumpAndSettle();
     expect(

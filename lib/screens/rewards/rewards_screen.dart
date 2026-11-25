@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../widgets/eco_ui.dart';
-
 import '../../services/local_store.dart';
 import '../../services/xp_service.dart';
+import '../../widgets/eco_ui.dart';
+import '../../widgets/rewards/reward_cards.dart';
 
 class RewardsScreen extends StatefulWidget {
   const RewardsScreen({
@@ -211,47 +211,7 @@ class _RewardsScreenState extends State<RewardsScreen> {
             subtitle: 'Programma fedeltà dimostrativo · dati locali',
           ),
           const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primaryContainer,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        'Saldo disponibile',
-                        style: theme.textTheme.labelLarge,
-                      ),
-                    ),
-                    const EcoIconBadge(icon: Icons.workspace_premium_outlined),
-                  ],
-                ),
-                Text(
-                  '${xp.balance} XP',
-                  style: theme.textTheme.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  'XP totali: ${xp.totalXp} · Spesi: ${xp.spentXp}',
-                  style: theme.textTheme.bodySmall,
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Livello ${xp.level} · ${xp.totalXp % 500} / 500 XP al prossimo livello',
-                ),
-                const SizedBox(height: 8),
-                LinearProgressIndicator(value: xp.levelProgress),
-                const SizedBox(height: 8),
-                const Text('Il livello non diminuisce con il riscatto.'),
-              ],
-            ),
-          ),
+          XpBalanceCard(xp: xp),
           if (_busy) const LinearProgressIndicator(),
           const SizedBox(height: 24),
           Text('Guadagna XP', style: theme.textTheme.titleLarge),
@@ -284,91 +244,21 @@ class _RewardsScreenState extends State<RewardsScreen> {
             ),
           const SizedBox(height: 16),
           Text('Missione', style: theme.textTheme.titleLarge),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Ricicla in 3 giorni diversi · +100 XP',
-                    style: theme.textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  LinearProgressIndicator(
-                    value: xp.missionCompleted ? 1.0 : xp.recyclingCount / 3,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    xp.missionCompleted
-                        ? 'Missione completata'
-                        : '${xp.recyclingCount}/3 giorni',
-                  ),
-                ],
-              ),
-            ),
-          ),
+          RewardMissionCard(xp: xp),
           const SizedBox(height: 24),
           Text('Premi disponibili', style: theme.textTheme.titleLarge),
           const SizedBox(height: 10),
           EcoMetricGrid(
             children: [
               for (final reward in _catalog)
-                EcoPanel(
-                  padding: const EdgeInsets.all(12),
-                  color: xp.redeemed(reward.id)
-                      ? theme.colorScheme.primaryContainer
-                      : null,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      EcoIconBadge(icon: reward.icon, size: 42),
-                      const SizedBox(height: 10),
-                      Text(reward.name, style: theme.textTheme.titleMedium),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${reward.cost} XP',
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      if (xp.redeemed(reward.id))
-                        const Row(
-                          children: [
-                            Icon(Icons.check_circle_outline, size: 18),
-                            SizedBox(width: 5),
-                            Flexible(child: Text('Riscattato')),
-                          ],
-                        )
-                      else
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.tonal(
-                            onPressed: _busy || xp.balance < reward.cost
-                                ? null
-                                : () => _redeem(
-                                    reward.id,
-                                    reward.name,
-                                    reward.cost,
-                                  ),
-                            style: FilledButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 10,
-                              ),
-                              minimumSize: const Size(0, 40),
-                            ),
-                            child: Text(
-                              xp.balance < reward.cost
-                                  ? 'XP insufficienti'
-                                  : 'Riscatta',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                RewardCard(
+                  name: reward.name,
+                  cost: reward.cost,
+                  icon: reward.icon,
+                  redeemed: xp.redeemed(reward.id),
+                  balance: xp.balance,
+                  busy: _busy,
+                  onRedeem: () => _redeem(reward.id, reward.name, reward.cost),
                 ),
             ],
           ),

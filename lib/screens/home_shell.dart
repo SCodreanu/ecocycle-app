@@ -30,6 +30,7 @@ class HomeShell extends StatefulWidget {
 
 class _HomeShellState extends State<HomeShell> {
   int _selectedIndex = 0;
+  int _xpRevision = 0;
   RecyclingPoint? _reportPoint;
   int _reportRevision = 0;
   late final FavoritesController _favorites;
@@ -45,6 +46,13 @@ class _HomeShellState extends State<HomeShell> {
   void dispose() {
     _favorites.dispose();
     super.dispose();
+  }
+
+  void _refreshXp() {
+    if (mounted)
+      setState(() {
+        _xpRevision++;
+      });
   }
 
   void _report(RecyclingPoint point) {
@@ -84,24 +92,34 @@ class _HomeShellState extends State<HomeShell> {
         index: _selectedIndex,
         children: [
           MapScreen(onReport: _report, favorites: _favorites),
-          RewardsScreen(store: widget.store),
+          RewardsScreen(
+            store: widget.store,
+            refreshRevision: _xpRevision,
+            onXpChanged: _refreshXp,
+          ),
           ReportScreen(
             store: widget.store,
             point: _reportPoint,
             linkRevision: _reportRevision,
+            onXpChanged: _refreshXp,
           ),
           ProfileScreen(
             user: widget.user,
             authService: widget.authService,
             onToggleTheme: widget.onToggleTheme,
             favorites: _favorites,
+            store: widget.store,
+            refreshRevision: _xpRevision,
           ),
         ],
       ),
     ),
     bottomNavigationBar: NavigationBar(
       selectedIndex: _selectedIndex,
-      onDestinationSelected: (index) => setState(() => _selectedIndex = index),
+      onDestinationSelected: (index) => setState(() {
+        _selectedIndex = index;
+        if (index == 1 || index == 3) _xpRevision++;
+      }),
       destinations: const [
         NavigationDestination(
           icon: Icon(Icons.map_outlined),

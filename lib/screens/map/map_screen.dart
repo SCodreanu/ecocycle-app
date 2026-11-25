@@ -145,11 +145,21 @@ class _MapScreenState extends State<MapScreen> {
       );
       if (!mounted) return;
       final location = LatLng(position.latitude, position.longitude);
+      final inCoverage = RecyclingService.isWithinCoverage(
+        location.latitude,
+        location.longitude,
+      );
       setState(() {
         _userLocation = location;
-        _locationMessage = 'Posizione disponibile';
+        _locationMessage = inCoverage ? 'Posizione disponibile' : 'Sei fuori dall’area coperta. I punti disponibili sono quelli di Torino e dintorni.';
       });
-      if (!_list) _controller.move(location, _controller.camera.zoom);
+      if (!_list) {
+        if (inCoverage) {
+          _controller.move(location, _controller.camera.zoom);
+        } else {
+          _controller.move(const LatLng(45.07, 7.675), 12);
+        }
+      }
     } on LocationServiceDisabledException {
       _locationState(
         'Localizzazione disattivata',
@@ -188,14 +198,18 @@ class _MapScreenState extends State<MapScreen> {
       return [];
     }
 
+    final knownMaterials = selected.materialCodes
+        .where(RecyclingPoint.materialNames.containsKey)
+        .map((code) => RecyclingPoint.materialNames[code]!)
+        .toSet();
+    if (knownMaterials.isEmpty) return [];
+
     final alternatives = allPoints.where((point) {
       if (point.key == selected.key || !point.isContainer) {
         return false;
       }
 
-      final sameMaterial = point.materials.any(
-        (material) => selected.materials.contains(material),
-      );
+      final sameMaterial = point.materials.any(knownMaterials.contains);
 
       if (!sameMaterial) {
         return false;
@@ -250,7 +264,7 @@ class _MapScreenState extends State<MapScreen> {
             children: [
               Text(point.title, style: Theme.of(sheet).textTheme.titleLarge),
               const SizedBox(height: 8),
-              Text(point.address ?? 'OSM ${point.key}'),
+              Text(point.address ?? 'Indirizzo non censito'),
               Text(
                 point.materials.isEmpty
                     ? 'Materiali non disponibili'
@@ -308,7 +322,7 @@ class _MapScreenState extends State<MapScreen> {
       title: Text(point.title),
       subtitle: Text(
         [
-          point.address ?? 'OSM ${point.key}',
+          point.address ?? 'Indirizzo non censito',
           if (point.isContainer)
             '${demo.status.label} · ${demo.fillLevel}% (demo)',
           if (point.materials.isNotEmpty) point.materials.join(' · '),
@@ -550,7 +564,14 @@ class _MapScreenState extends State<MapScreen> {
                     FlutterMap(
                       mapController: _controller,
                       options: MapOptions(
-                        initialCenter: location ?? const LatLng(45.07, 7.675),
+                        initialCenter:
+                            location != null &&
+                                RecyclingService.isWithinCoverage(
+                                  location.latitude,
+                                  location.longitude,
+                                )
+                            ? location
+                            : const LatLng(45.07, 7.675),
                         initialZoom: 12,
                         maxZoom: 19,
                         backgroundColor: colors.surface,

@@ -7,9 +7,22 @@ import '../models/recycling_point.dart';
 class RecyclingService {
   RecyclingService({http.Client? client}) : _client = client;
   final http.Client? _client;
-  static const _query = '''
+  // These bounds describe the demo coverage, not the municipal boundary.
+  static const double south = 45.00;
+  static const double west = 7.58;
+  static const double north = 45.14;
+  static const double east = 7.77;
+
+  static bool isWithinCoverage(double latitude, double longitude) =>
+      latitude >= south &&
+      latitude <= north &&
+      longitude >= west &&
+      longitude <= east;
+
+  static final _query =
+      '''
 [out:json][timeout:15];
-nwr["amenity"="recycling"](45.00,7.58,45.14,7.77);
+nwr["amenity"="recycling"](${south.toStringAsFixed(2)},${west.toStringAsFixed(2)},${north.toStringAsFixed(2)},${east.toStringAsFixed(2)});
 out center;
 ''';
   Future<List<RecyclingPoint>> fetchRecyclingPoints() async {

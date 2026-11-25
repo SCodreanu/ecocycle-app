@@ -1,17 +1,31 @@
 import 'package:flutter/material.dart';
 
 import '../../services/local_store.dart';
+import '../../services/xp_service.dart';
 
 class RewardsScreen extends StatefulWidget {
-  const RewardsScreen({super.key, required this.store});
+  const RewardsScreen({
+    super.key,
+    required this.store,
+    this.refreshRevision = 0,
+    this.onXpChanged,
+  });
   final LocalStore store;
+  final int refreshRevision;
+  final VoidCallback? onXpChanged;
+
   @override
   State<RewardsScreen> createState() => _RewardsScreenState();
 }
 
 class _RewardsScreenState extends State<RewardsScreen> {
-  static const _initialPoints = 2840;
   static const _catalog = [
+    (
+      id: 'badge',
+      name: 'Badge EcoCycle',
+      cost: 150,
+      icon: Icons.workspace_premium_outlined,
+    ),
     (
       id: 'tree',
       name: 'Pianta un albero',
@@ -39,21 +53,83 @@ class _RewardsScreenState extends State<RewardsScreen> {
       icon: Icons.bolt_outlined,
     ),
   ];
-  late Future<List<Map<String, dynamic>>> _records = widget.store.readRecords(
-    'rewards',
-  );
+  late final _service = XpService(widget.store);
+  late Future<XpSummary> _summary = _service.load();
   bool _busy = false;
-  int _balance(List<Map<String, dynamic>> records) =>
-      _initialPoints -
-      records.fold<int>(0, (sum, r) => sum + (r['cost'] as int));
-  Future<void> _redeem(
-    List<Map<String, dynamic>> records,
-    String id,
-    String name,
-    int cost,
-  ) async {
-    if (_busy || _balance(records) < cost || records.any((r) => r['id'] == id))
-      return;
+
+  @override
+  void didUpdateWidget(covariant RewardsScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshRevision != widget.refreshRevision && !_busy) {
+      _summary = _service.load();
+    }
+  }
+
+  void _reload() {
+    setState(() {
+      _summary = _service.load();
+    });
+  }
+
+  void _message(String message) {
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
+  Future<void> _recordRecycling() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final material = await showDialog<String>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Dichiara un riciclo'),
+          children: [
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              child: Text(
+                'Attività autodichiarata, non verificata da sensori. Una attività premiata al giorno.',
+              ),
+            ),
+            for (final material in [
+              'Carta',
+              'Plastica',
+              'Vetro',
+              'Organico',
+              'Metalli',
+              'Altro',
+            ])
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, material),
+                child: Text(material),
+              ),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Annulla'),
+            ),
+          ],
+        ),
+      );
+      if (material == null || !mounted) return;
+      final updated = await _service.recordRecycling(material);
+      if (!mounted) return;
+      setState(() {
+        _summary = Future.value(updated);
+      });
+      widget.onXpChanged?.call();
+      _message('Attività di riciclo registrata localmente.');
+    } catch (_) {
+      _message('Impossibile aggiornare le attività. Riprova.');
+      if (mounted) _reload();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _redeem(String id, String name, int cost) async {
+    if (_busy) return;
     setState(() => _busy = true);
     try {
       final confirmed = await showDialog<bool>(
@@ -76,74 +152,61 @@ class _RewardsScreenState extends State<RewardsScreen> {
         ),
       );
       if (confirmed != true || !mounted) return;
-      final next = [
-        ...records,
-        {
-          'id': id,
-          'name': name,
-          'cost': cost,
-          'date': DateTime.now().toIso8601String(),
-        },
-      ];
-      await widget.store.writeRecords('rewards', next);
+      final updated = await _service.redeem(id, name, cost);
       if (!mounted) return;
       setState(() {
-        _records = Future.value(next);
+        _summary = Future.value(updated);
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Riscatto dimostrativo registrato.')),
-      );
-    } catch (error, stackTrace) {
-      debugPrint('Reward redemption error: $error');
-      debugPrintStack(stackTrace: stackTrace);
-
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Impossibile salvare il riscatto. Riprova.'),
-          ),
-        );
+      widget.onXpChanged?.call();
+      _message('Riscatto dimostrativo registrato.');
+    } catch (_) {
+      _message('Impossibile completare il riscatto. Riprova.');
+      if (mounted) _reload();
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
+  Widget _history(List<Map<String, dynamic>> records) => Column(
+    children: [
+      for (final record in records.reversed)
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.history),
+          title: Text(record['name'] as String),
+          subtitle: Text((record['date'] as String).split('T').first),
+          trailing: Text('−${record['cost']} XP'),
+        ),
+    ],
+  );
+
   @override
-  Widget build(
-    BuildContext context,
-  ) => FutureBuilder<List<Map<String, dynamic>>>(
-    future: _records,
+  Widget build(BuildContext context) => FutureBuilder<XpSummary>(
+    future: _summary,
     builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting)
+      if (snapshot.connectionState == ConnectionState.waiting) {
         return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError)
+      }
+      if (snapshot.hasError || !snapshot.hasData) {
         return Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Impossibile caricare i premi.'),
-              TextButton(
-                onPressed: () {
-                  final records = widget.store.readRecords('rewards');
-
-                  setState(() {
-                    _records = records;
-                  });
-                },
-                child: const Text('Riprova'),
-              ),
+              const Text('Impossibile caricare i punti XP.'),
+              TextButton(onPressed: _reload, child: const Text('Riprova')),
             ],
           ),
         );
-      final records = snapshot.data ?? [];
-      final balance = _balance(records);
+      }
+      final xp = snapshot.data!;
       final theme = Theme.of(context);
+      final recordedToday = xp.recycledOn(DateTime.now());
       return ListView(
         padding: const EdgeInsets.all(20),
         children: [
           Text('I tuoi premi', style: theme.textTheme.headlineMedium),
           const SizedBox(height: 6),
-          const Text('Programma fedeltà dimostrativo'),
+          const Text('Programma fedeltà dimostrativo · dati locali'),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(20),
@@ -156,65 +219,133 @@ class _RewardsScreenState extends State<RewardsScreen> {
               children: [
                 Text('Saldo disponibile', style: theme.textTheme.labelLarge),
                 Text(
-                  '$balance XP',
+                  '${xp.balance} XP',
                   style: theme.textTheme.headlineLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                Text('XP totali: ${xp.totalXp} · Spesi: ${xp.spentXp}'),
                 const SizedBox(height: 12),
-                const Text('Livello 5 · 2.840 / 3.500 XP'),
+                Text(
+                  'Livello ${xp.level} · ${xp.totalXp % 500} / 500 XP al prossimo livello',
+                ),
                 const SizedBox(height: 8),
-                const LinearProgressIndicator(value: 2840 / 3500),
+                LinearProgressIndicator(value: xp.levelProgress),
                 const SizedBox(height: 8),
                 const Text('Il livello non diminuisce con il riscatto.'),
               ],
             ),
           ),
+          if (_busy) const LinearProgressIndicator(),
+          const SizedBox(height: 24),
+          Text('Guadagna XP', style: theme.textTheme.titleLarge),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _busy || recordedToday ? null : _recordRecycling,
+            icon: const Icon(Icons.recycling),
+            label: Text(
+              recordedToday
+                  ? 'Riciclo già registrato oggi'
+                  : 'Dichiara un riciclo (+${xp.recyclingCount == 0 ? 50 : 20} XP)',
+            ),
+          ),
+          const Text(
+            'Una attività autodichiarata al giorno. Le segnalazioni locali assegnano 50 XP al giorno al massimo.',
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.flag_outlined),
+            title: const Text('Segnalazioni premiate'),
+            trailing: Text('${xp.reportDays.length * 50} XP'),
+          ),
+          if (xp.onboardingCompleted)
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(Icons.check_circle_outline),
+              title: Text('Onboarding completato'),
+              trailing: Text('+100 XP'),
+            ),
+          const SizedBox(height: 16),
+          Text('Missione', style: theme.textTheme.titleLarge),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Ricicla in 3 giorni diversi · +100 XP',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: xp.missionCompleted ? 1.0 : xp.recyclingCount / 3,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    xp.missionCompleted
+                        ? 'Missione completata'
+                        : '${xp.recyclingCount}/3 giorni',
+                  ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 24),
           Text('Premi disponibili', style: theme.textTheme.titleLarge),
-          const SizedBox(height: 8),
           for (final reward in _catalog) ...[
             ListTile(
               contentPadding: EdgeInsets.zero,
               leading: CircleAvatar(child: Icon(reward.icon)),
               title: Text(reward.name),
               subtitle: Text('${reward.cost} XP'),
-              trailing: records.any((r) => r['id'] == reward.id)
+              trailing: xp.redeemed(reward.id)
                   ? const Icon(
                       Icons.check_circle_outline,
                       semanticLabel: 'Riscattato',
                     )
                   : FilledButton.tonal(
-                      onPressed: _busy || balance < reward.cost
+                      onPressed: _busy || xp.balance < reward.cost
                           ? null
-                          : () => _redeem(
-                              records,
-                              reward.id,
-                              reward.name,
-                              reward.cost,
-                            ),
+                          : () => _redeem(reward.id, reward.name, reward.cost),
                       child: Text(
-                        balance < reward.cost ? 'XP insufficienti' : 'Riscatta',
+                        xp.balance < reward.cost
+                            ? 'XP insufficienti'
+                            : 'Riscatta',
                       ),
                     ),
             ),
             const Divider(height: 1),
           ],
           const SizedBox(height: 24),
-          Text('Storico riscatti', style: theme.textTheme.titleLarge),
-          if (records.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Text('Non hai ancora riscattato premi.'),
-            ),
-          for (final record in records.reversed)
+          Text(
+            'Storico attività di riciclo',
+            style: theme.textTheme.titleLarge,
+          ),
+          if (xp.activities.isEmpty) const Text('Nessuna attività registrata.'),
+          for (final activity in xp.activities.reversed)
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const Icon(Icons.history),
-              title: Text(record['name'] as String),
-              subtitle: Text((record['date'] as String).split('T').first),
-              trailing: Text('−${record['cost']} XP'),
+              leading: const Icon(Icons.recycling),
+              title: Text(activity['material'] as String),
+              subtitle: Text((activity['date'] as String).split('T').first),
             ),
+          const SizedBox(height: 24),
+          Text('Storico riscatti', style: theme.textTheme.titleLarge),
+          if (xp.redemptions.isEmpty)
+            const Text('Non hai ancora riscattato premi con il nuovo sistema.'),
+          _history(xp.redemptions),
+          if (xp.legacyRedemptions.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'Archivio riscatti demo precedenti',
+              style: theme.textTheme.titleMedium,
+            ),
+            const Text(
+              'Riscatti del vecchio saldo dimostrativo: non incidono sul nuovo saldo.',
+            ),
+            _history(xp.legacyRedemptions),
+          ],
         ],
       );
     },

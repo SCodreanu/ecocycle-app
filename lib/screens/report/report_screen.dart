@@ -14,10 +14,12 @@ class ReportScreen extends StatefulWidget {
     required this.store,
     this.point,
     this.linkRevision = 0,
+    this.onXpChanged,
   });
   final LocalStore store;
   final RecyclingPoint? point;
   final int linkRevision;
+  final VoidCallback? onXpChanged;
   @override
   State<ReportScreen> createState() => _ReportScreenState();
 }
@@ -177,6 +179,7 @@ class _ReportScreenState extends State<ReportScreen> {
       await widget.store.writeRecords('reports', next);
       saved = true;
       if (!mounted) return;
+      widget.onXpChanged?.call();
       _description.clear();
       _form.currentState?.reset();
       setState(() {
@@ -192,7 +195,7 @@ class _ReportScreenState extends State<ReportScreen> {
         builder: (context) => AlertDialog(
           title: const Text('Segnalazione salvata'),
           content: const Text(
-            'La segnalazione è stata registrata solo su questo dispositivo. Non è stata inviata a un ente o gestore.',
+            'La segnalazione è stata registrata solo su questo dispositivo. Non è stata inviata a un ente o gestore. La prima segnalazione del giorno assegna 50 XP dimostrativi.',
           ),
           actions: [
             TextButton(

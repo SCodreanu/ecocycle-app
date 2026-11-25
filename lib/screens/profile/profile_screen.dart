@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../models/recycling_point.dart';
 import '../../services/auth_service.dart';
 import '../../services/favorites_controller.dart';
+import '../../services/local_store.dart';
+import '../../services/xp_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -12,12 +14,16 @@ class ProfileScreen extends StatefulWidget {
     required this.authService,
     required this.onToggleTheme,
     this.favorites,
+    this.store,
+    this.refreshRevision = 0,
   });
 
   final User user;
   final AuthService authService;
   final VoidCallback onToggleTheme;
   final FavoritesController? favorites;
+  final LocalStore? store;
+  final int refreshRevision;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -26,6 +32,75 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _busy = false;
   String? _updatedName;
+  Future<XpSummary>? _xp;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadXp();
+  }
+
+  void _loadXp() {
+    final store = widget.store;
+    _xp = store == null ? null : XpService(store).load();
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.refreshRevision != oldWidget.refreshRevision ||
+        widget.store != oldWidget.store) {
+      _loadXp();
+    }
+  }
+
+  Widget _xpSection() => FutureBuilder<XpSummary>(
+    future: _xp,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting)
+        return const LinearProgressIndicator();
+      if (snapshot.hasError || !snapshot.hasData) {
+        return TextButton(
+          onPressed: () => setState(() {
+            _loadXp();
+          }),
+          child: const Text('XP non disponibili. Riprova.'),
+        );
+      }
+      final xp = snapshot.data!;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'I tuoi progressi',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.emoji_events_outlined),
+            title: Text('Livello ${xp.level}'),
+            subtitle: Text(
+              '${xp.totalXp} XP totali · ${xp.balance} XP disponibili',
+            ),
+          ),
+          LinearProgressIndicator(value: xp.levelProgress),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.recycling),
+            title: const Text('Giornate di riciclo dichiarate'),
+            trailing: Text('${xp.recyclingCount}'),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.flag_outlined),
+            title: const Text('Giornate con segnalazioni premiate'),
+            trailing: Text('${xp.reportDays.length}'),
+          ),
+          const Text('Progressi dimostrativi salvati sul dispositivo.'),
+        ],
+      );
+    },
+  );
 
   void _message(String message) {
     if (mounted) {
@@ -234,6 +309,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     }
                   },
           ),
+        if (_xp != null) ...[
+          const Divider(),
+          const SizedBox(height: 12),
+          _xpSection(),
+        ],
         if (favorites != null) ...[
           const Divider(),
           const SizedBox(height: 12),

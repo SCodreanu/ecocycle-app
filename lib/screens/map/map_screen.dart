@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/bin_status.dart';
 import '../../models/recycling_point.dart';
 import '../../services/favorites_controller.dart';
+import '../../services/map_filter_service.dart';
 import '../../services/recycling_service.dart';
 import '../../widgets/eco_loader.dart';
 import 'bin_detail_screen.dart';
@@ -193,65 +194,13 @@ class _MapScreenState extends State<MapScreen> {
     _locationState('Impossibile aprire le impostazioni.');
   }
 
-  double _distanceBetweenPoints(RecyclingPoint first, RecyclingPoint second) {
-    return Geolocator.distanceBetween(
-      first.latitude,
-      first.longitude,
-      second.latitude,
-      second.longitude,
-    );
-  }
-
-  List<RecyclingPoint> _findAlternatives(
-    RecyclingPoint selected,
-    List<RecyclingPoint> allPoints,
-  ) {
-    if (!selected.isContainer || selected.materials.isEmpty) {
-      return [];
-    }
-
-    final knownMaterials = selected.materialCodes
-        .where(RecyclingPoint.materialNames.containsKey)
-        .map((code) => RecyclingPoint.materialNames[code]!)
-        .toSet();
-    if (knownMaterials.isEmpty) return [];
-
-    final alternatives = allPoints.where((point) {
-      if (point.key == selected.key || !point.isContainer) {
-        return false;
-      }
-
-      final sameMaterial = point.materials.any(knownMaterials.contains);
-
-      if (!sameMaterial) {
-        return false;
-      }
-
-      final status = BinStatusData.forPoint(point).status;
-
-      final isAvailable =
-          status == BinStatus.normal || status == BinStatus.nearlyFull;
-
-      return isAvailable && _distanceBetweenPoints(selected, point) <= 3000;
-    }).toList();
-
-    alternatives.sort(
-      (a, b) => _distanceBetweenPoints(
-        selected,
-        a,
-      ).compareTo(_distanceBetweenPoints(selected, b)),
-    );
-
-    return alternatives.take(3).toList();
-  }
-
   void _detail(RecyclingPoint point, List<RecyclingPoint> allPoints) {
     Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => BinDetailScreen(
           point: point,
           favorites: widget.favorites,
-          alternatives: _findAlternatives(point, allPoints),
+          alternatives: MapFilterService.findAlternatives(point, allPoints),
           onAlternativeSelected: (alternative) {
             Navigator.of(context).pop();
             _detail(alternative, allPoints);
@@ -619,46 +568,19 @@ class _MapScreenState extends State<MapScreen> {
           _retryFromEmptyOrError,
         );
       }
-      final materials = all.expand((point) => point.materials).toSet().toList()
-        ..sort();
+      final materials = MapFilterService.availableMaterials(all);
       final activeMaterial = materials.contains(_material) ? _material : '';
-      final query = _query.trim().toLowerCase();
-      final points = all
-          .where(
-            (point) =>
-                (!_onlyFavorites ||
-                    widget.favorites?.contains(point) == true) &&
-                (activeMaterial.isEmpty ||
-                    point.materials.contains(activeMaterial)) &&
-                (_status == null ||
-                    point.isContainer &&
-                        BinStatusData.forPoint(point).status == _status) &&
-                (query.isEmpty ||
-                    '${point.title} ${point.address ?? ''} ${point.key} ${point.materials.join(' ')}'
-                        .toLowerCase()
-                        .contains(query)),
-          )
-          .toList();
-      final colors = Theme.of(context).colorScheme;
       final location = _userLocation;
-      if (location != null) {
-        points.sort(
-          (a, b) =>
-              Geolocator.distanceBetween(
-                location.latitude,
-                location.longitude,
-                a.latitude,
-                a.longitude,
-              ).compareTo(
-                Geolocator.distanceBetween(
-                  location.latitude,
-                  location.longitude,
-                  b.latitude,
-                  b.longitude,
-                ),
-              ),
-        );
-      }
+      final points = MapFilterService.filter(
+        all,
+        query: _query,
+        material: activeMaterial,
+        status: _status,
+        onlyFavorites: _onlyFavorites,
+        isFavorite: widget.favorites?.contains,
+        location: location,
+      );
+      final colors = Theme.of(context).colorScheme;
       return Column(
         children: [
           Padding(

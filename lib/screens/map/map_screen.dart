@@ -93,24 +93,27 @@ class _MapScreenState extends State<MapScreen> {
       if (await launchUrl(
         Uri.parse('https://www.openstreetmap.org/copyright'),
         mode: LaunchMode.externalApplication,
-      ))
+      )) {
         return;
+      }
     } catch (_) {}
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('https://www.openstreetmap.org/copyright'),
         ),
       );
+    }
   }
 
   void _locationState(String message, [Future<bool> Function()? settings]) {
-    if (mounted)
+    if (mounted) {
       setState(() {
         _locationMessage = message;
         _settings = settings;
         if (message != 'Posizione disponibile') _userLocation = null;
       });
+    }
   }
 
   Future<void> _centerOnUser() async {
@@ -130,8 +133,9 @@ class _MapScreenState extends State<MapScreen> {
       if (!mounted) return;
       var permission = await Geolocator.checkPermission();
       if (!mounted) return;
-      if (permission == LocationPermission.denied)
+      if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
+      }
       if (!mounted) return;
       if (permission == LocationPermission.deniedForever) {
         _locationState(
@@ -444,8 +448,9 @@ class _MapScreenState extends State<MapScreen> {
         ),
       ),
     );
-    if (mounted && result != null)
+    if (mounted && result != null) {
       setState(() => _status = result == -1 ? null : BinStatus.values[result]);
+    }
   }
 
   Widget _filterButton(String label, IconData icon, VoidCallback onTap) =>
@@ -598,20 +603,22 @@ class _MapScreenState extends State<MapScreen> {
     builder: (context, snapshot) {
       final waiting = snapshot.connectionState == ConnectionState.waiting;
       if (waiting && !snapshot.hasData) return _loadingPoints();
-      if (snapshot.hasError)
+      if (snapshot.hasError) {
         return _message(
           Icons.cloud_off_outlined,
           'Impossibile caricare i punti di riciclo.',
           _retryFromEmptyOrError,
         );
+      }
       final all = snapshot.data ?? const <RecyclingPoint>[];
       if (all.isEmpty && waiting) return _loadingPoints();
-      if (all.isEmpty)
+      if (all.isEmpty) {
         return _message(
           Icons.search_off,
           'Nessun punto di riciclo trovato nella zona di Torino.',
           _retryFromEmptyOrError,
         );
+      }
       final materials = all.expand((point) => point.materials).toSet().toList()
         ..sort();
       final activeMaterial = materials.contains(_material) ? _material : '';
@@ -789,8 +796,9 @@ class _MapScreenState extends State<MapScreen> {
                           final zoom = camera.zoom.floor();
                           if (zoom != _zoomBucket) {
                             WidgetsBinding.instance.addPostFrameCallback((_) {
-                              if (mounted && zoom != _zoomBucket)
+                              if (mounted && zoom != _zoomBucket) {
                                 setState(() => _zoomBucket = zoom);
+                              }
                             });
                           }
                         },

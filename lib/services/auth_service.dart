@@ -101,8 +101,9 @@ class AuthService {
   static String errorMessage(Object error) {
     const fallback = 'Si è verificato un errore. Riprova.';
     if (error is GoogleSignInException) {
-      if (error.code == GoogleSignInExceptionCode.canceled)
+      if (error.code == GoogleSignInExceptionCode.canceled) {
         return 'Accesso con Google annullato.';
+      }
       return 'Accesso con Google non riuscito. Verifica la configurazione o riprova.';
     }
     if (error is! FirebaseAuthException) return fallback;

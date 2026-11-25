@@ -48,13 +48,14 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _submit() {
-    if (_formKey.currentState!.validate())
+    if (_formKey.currentState!.validate()) {
       _run(
         () => widget.authService.signIn(
           email: _emailController.text.trim(),
           password: _passwordController.text,
         ),
       );
+    }
   }
 
   @override
@@ -100,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         onSelectionChanged: _loading
                             ? null
                             : (value) {
-                                if (value.contains(0))
+                                if (value.contains(0)) {
                                   Navigator.of(context).push<void>(
                                     MaterialPageRoute(
                                       builder: (_) => RegisterScreen(
@@ -108,6 +109,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ),
                                   );
+                                }
                               },
                       ),
                       const SizedBox(height: 20),

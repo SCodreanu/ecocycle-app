@@ -49,10 +49,11 @@ class _HomeShellState extends State<HomeShell> {
   }
 
   void _refreshXp() {
-    if (mounted)
+    if (mounted) {
       setState(() {
         _xpRevision++;
       });
+    }
   }
 
   void _report(RecyclingPoint point) {

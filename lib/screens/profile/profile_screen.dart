@@ -179,8 +179,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _xpSection() => FutureBuilder<XpSummary>(
     future: _xp,
     builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting)
+      if (snapshot.connectionState == ConnectionState.waiting) {
         return const LinearProgressIndicator();
+      }
       if (snapshot.hasError || !snapshot.hasData) {
         return TextButton(
           onPressed: () => setState(() {

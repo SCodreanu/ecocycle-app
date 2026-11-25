@@ -36,11 +36,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } catch (error, stackTrace) {
       debugPrint('Onboarding save error: $error');
       debugPrintStack(stackTrace: stackTrace);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _saving = false;
           _error = 'Impossibile salvare le preferenze. Riprova.';
         });
+      }
     }
   }
 

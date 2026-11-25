@@ -41,14 +41,17 @@ out center;
             },
           )
           .timeout(const Duration(seconds: 25));
-      if (response.statusCode != 200)
+      if (response.statusCode != 200) {
         throw http.ClientException('Overpass HTTP ${response.statusCode}', uri);
+      }
       final data = jsonDecode(utf8.decode(response.bodyBytes));
-      if (data is! Map<String, dynamic> || data['remark'] != null)
+      if (data is! Map<String, dynamic> || data['remark'] != null) {
         throw const FormatException('Invalid or incomplete Overpass response.');
+      }
       final elements = data['elements'];
-      if (elements is! List)
+      if (elements is! List) {
         throw const FormatException('Missing Overpass elements.');
+      }
       return [
         for (final element in elements)
           RecyclingPoint.fromJson(element as Map<String, dynamic>),

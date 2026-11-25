@@ -117,23 +117,26 @@ class _ReportScreenState extends State<ReportScreen> {
     });
     try {
       if (!await Geolocator.isLocationServiceEnabled()) {
-        if (mounted)
+        if (mounted) {
           setState(
             () => _error = 'Attiva la localizzazione nelle impostazioni.',
           );
+        }
         return;
       }
       var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied)
+      if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
+      }
       if (permission != LocationPermission.always &&
           permission != LocationPermission.whileInUse) {
-        if (mounted)
+        if (mounted) {
           setState(
             () => _error = permission == LocationPermission.deniedForever
                 ? 'Permesso negato definitivamente. Apri le impostazioni dell’app.'
                 : 'Permesso di posizione negato.',
           );
+        }
         return;
       }
       final position = await Geolocator.getCurrentPosition(
@@ -232,10 +235,11 @@ class _ReportScreenState extends State<ReportScreen> {
           await copied.delete();
         } catch (_) {}
       }
-      if (mounted)
+      if (mounted) {
         setState(
           () => _error = 'Impossibile salvare la segnalazione. Riprova.',
         );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -328,7 +332,7 @@ class _ReportScreenState extends State<ReportScreen> {
                           );
                           if (opened) return;
                         } catch (_) {}
-                        if (context.mounted)
+                        if (context.mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text(
@@ -336,6 +340,7 @@ class _ReportScreenState extends State<ReportScreen> {
                               ),
                             ),
                           );
+                        }
                       },
                       child: const Text('© OpenStreetMap contributors'),
                     ),
@@ -412,17 +417,19 @@ class _ReportScreenState extends State<ReportScreen> {
         ),
       );
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Impossibile eliminare la segnalazione. Riprova.'),
           ),
         );
+      }
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _busy = false;
         });
+      }
     }
   }
 
@@ -664,9 +671,10 @@ class _ReportScreenState extends State<ReportScreen> {
         FutureBuilder<List<Map<String, dynamic>>>(
           future: _records,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting)
+            if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
-            if (snapshot.hasError)
+            }
+            if (snapshot.hasError) {
               return TextButton(
                 onPressed: () {
                   final records = widget.store.readRecords('reports');
@@ -677,12 +685,14 @@ class _ReportScreenState extends State<ReportScreen> {
                 },
                 child: const Text('Impossibile leggere lo storico. Riprova.'),
               );
+            }
             final records = snapshot.data ?? [];
-            if (records.isEmpty)
+            if (records.isEmpty) {
               return const Padding(
                 padding: EdgeInsets.symmetric(vertical: 16),
                 child: Text('Non hai ancora registrato segnalazioni.'),
               );
+            }
             return Column(
               children: [
                 for (final record in records.reversed)

@@ -1,4 +1,4 @@
-﻿<p align="center">
+<p align="center">
   <img src="assets/branding/banner.png" alt="EcoCycle Banner" width="100%">
 </p>
 
@@ -95,5 +95,4 @@ The APK is normally created at `build/app/outputs/flutter-apk/app-release.apk`. 
 - Map data and tiles: [OpenStreetMap contributors](https://www.openstreetmap.org/copyright); [tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
 - Recycling data: Overpass API; public endpoints may be temporarily unavailable.
 - Identity: Firebase Authentication and Google Sign-In.
-- [Integration notes](docs/integrations.md) Â· [Demo guide](DEMO.md)
-
+- [Integration notes](docs/integrations.md)

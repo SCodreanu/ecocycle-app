@@ -485,7 +485,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onTap: () => showAboutDialog(
                   context: context,
                   applicationName: 'EcoCycle',
-                  applicationVersion: '1.0',
+                  applicationVersion: '1.1.0',
                   applicationIcon: Image.asset('assets/eco.png', width: 44),
                   children: [
                     const Text(

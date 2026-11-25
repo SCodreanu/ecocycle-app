@@ -7,7 +7,10 @@ class AuthService {
   AuthService({FirebaseAuth? firebaseAuth})
     : _auth = firebaseAuth ?? FirebaseAuth.instance;
   final FirebaseAuth _auth;
-  static const googleEnabled = bool.fromEnvironment('ECOCYCLE_GOOGLE_SIGN_IN');
+  static const googleEnabled = bool.fromEnvironment(
+    'ECOCYCLE_GOOGLE_SIGN_IN',
+    defaultValue: true,
+  );
   static const appleEnabled = bool.fromEnvironment('ECOCYCLE_APPLE_SIGN_IN');
   static final _emailPattern = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
   Future<void>? _googleInitialization;

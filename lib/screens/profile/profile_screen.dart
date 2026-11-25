@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../../widgets/eco_ui.dart';
 
@@ -11,6 +10,7 @@ import '../../models/recycling_point.dart';
 import '../../services/auth_service.dart';
 import '../../services/favorites_controller.dart';
 import '../../services/local_store.dart';
+import '../../services/profile_photo_service.dart';
 import '../../services/xp_service.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -40,24 +40,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _updatedName;
   Future<XpSummary>? _xp;
   final _picker = ImagePicker();
+  late final _photoService = ProfilePhotoService(widget.user.uid);
   File? _localPhoto;
   bool _photoLoading = true;
   int _photoRevision = 0;
 
-  // A separate private directory for every Firebase user.
-  Future<File> _photoFile() async {
-    final uid = Uri.encodeComponent(widget.user.uid);
-    final root = await getApplicationDocumentsDirectory();
-    return File('${root.path}/profile_photos/$uid/avatar.image');
-  }
-
   Future<void> _loadPhoto() async {
     try {
-      final file = await _photoFile();
-      final exists = await file.exists();
+      final file = await _photoService.load();
       if (mounted) {
         setState(() {
-          _localPhoto = exists ? file : null;
+          _localPhoto = file;
         });
       }
     } catch (_) {
@@ -70,7 +63,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _choosePhoto() async {
     if (_busy || _photoLoading) return;
     setState(() => _busy = true);
-    File? temporary;
     try {
       final selected = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -79,11 +71,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         imageQuality: 85,
       );
       if (!mounted || selected == null) return;
-      final target = await _photoFile();
-      await target.parent.create(recursive: true);
-      // Copy into private app storage before replacing the previous photo.
-      temporary = await File(selected.path).copy('${target.path}.tmp');
-      await temporary.rename(target.path);
+      final target = await _photoService.save(selected.path);
       await FileImage(target).evict();
       if (mounted) {
         setState(() {
@@ -95,13 +83,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (_) {
       _message('Impossibile salvare la foto. Riprova.');
     } finally {
-      try {
-        if (temporary != null && await temporary.exists()) {
-          await temporary.delete();
-        }
-      } catch (_) {
-        // A temporary file can be overwritten on the next selection.
-      }
       if (mounted) setState(() => _busy = false);
     }
   }
@@ -130,8 +111,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
       if (confirmed != true || !mounted) return;
-      final file = await _photoFile();
-      if (await file.exists()) await file.delete();
+      final file = await _photoService.remove();
       await FileImage(file).evict();
       if (mounted) {
         setState(() {

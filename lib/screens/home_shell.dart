@@ -3,11 +3,12 @@ import 'package:flutter/material.dart';
 
 import '../models/recycling_point.dart';
 import '../services/auth_service.dart';
+import '../services/favorites_controller.dart';
 import '../services/local_store.dart';
 import 'map/map_screen.dart';
-import 'rewards/rewards_screen.dart';
-import 'report/report_screen.dart';
 import 'profile/profile_screen.dart';
+import 'report/report_screen.dart';
+import 'rewards/rewards_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({
@@ -17,10 +18,12 @@ class HomeShell extends StatefulWidget {
     required this.user,
     required this.store,
   });
+
   final AuthService authService;
   final VoidCallback onToggleTheme;
   final User user;
   final LocalStore store;
+
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
@@ -29,13 +32,29 @@ class _HomeShellState extends State<HomeShell> {
   int _selectedIndex = 0;
   RecyclingPoint? _reportPoint;
   int _reportRevision = 0;
+  late final FavoritesController _favorites;
+
+  @override
+  void initState() {
+    super.initState();
+    _favorites = FavoritesController(widget.store);
+    _favorites.load();
+  }
+
+  @override
+  void dispose() {
+    _favorites.dispose();
+    super.dispose();
+  }
+
   void _report(RecyclingPoint point) {
-    if (mounted)
+    if (mounted) {
       setState(() {
         _reportPoint = point;
         _reportRevision++;
         _selectedIndex = 2;
       });
+    }
   }
 
   @override
@@ -64,7 +83,7 @@ class _HomeShellState extends State<HomeShell> {
       child: IndexedStack(
         index: _selectedIndex,
         children: [
-          MapScreen(onReport: _report),
+          MapScreen(onReport: _report, favorites: _favorites),
           RewardsScreen(store: widget.store),
           ReportScreen(
             store: widget.store,
@@ -75,6 +94,7 @@ class _HomeShellState extends State<HomeShell> {
             user: widget.user,
             authService: widget.authService,
             onToggleTheme: widget.onToggleTheme,
+            favorites: _favorites,
           ),
         ],
       ),

@@ -63,14 +63,31 @@ void main() {
     expect(a.fillLevel, inInclusiveRange(0, 100));
   });
   test('Thresholds and operational priority are consistent', () {
-    expect(BinStatus.fromFill(49), BinStatus.normal);
-    expect(BinStatus.fromFill(50), BinStatus.nearlyFull);
-    expect(BinStatus.fromFill(79), BinStatus.nearlyFull);
-    expect(BinStatus.fromFill(80), BinStatus.full);
+    expect(BinStatus.fromFill(0), BinStatus.normal);
+    expect(BinStatus.fromFill(69), BinStatus.normal);
+    expect(BinStatus.fromFill(70), BinStatus.nearlyFull);
+    expect(BinStatus.fromFill(89), BinStatus.nearlyFull);
+    expect(BinStatus.fromFill(90), BinStatus.full);
+    expect(BinStatus.fromFill(100), BinStatus.full);
+
     expect(BinStatus.fromFill(100, maintenance: true), BinStatus.maintenance);
+
+    expect(BinStatus.fromFill(0, unavailable: true), BinStatus.unavailable);
+
     expect(
       BinStatus.fromFill(100, maintenance: true, unavailable: true),
       BinStatus.unavailable,
     );
+  });
+  test('Simulated weight is consistent with occupied volume', () {
+    final point = RecyclingPoint.fromJson(data);
+    final telemetry = BinStatusData.forPoint(point);
+
+    final occupiedVolume = telemetry.capacity * telemetry.fillLevel / 100;
+
+    expect(telemetry.capacity, 1100);
+    expect(telemetry.weight, closeTo(occupiedVolume * 0.30, 0.051));
+
+    expect(telemetry.weight, greaterThanOrEqualTo(0));
   });
 }

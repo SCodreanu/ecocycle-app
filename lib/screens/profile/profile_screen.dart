@@ -1,7 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/recycling_point.dart';
 import '../../services/auth_service.dart';
+import '../../services/favorites_controller.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({
@@ -9,10 +11,14 @@ class ProfileScreen extends StatefulWidget {
     required this.user,
     required this.authService,
     required this.onToggleTheme,
+    this.favorites,
   });
+
   final User user;
   final AuthService authService;
   final VoidCallback onToggleTheme;
+  final FavoritesController? favorites;
+
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
@@ -20,10 +26,12 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _busy = false;
   String? _updatedName;
+
   void _message(String message) {
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   Future<void> _signOut() async {
@@ -76,10 +84,89 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _removeFavorite(
+    FavoritesController favorites,
+    RecyclingPoint point,
+  ) async {
+    if (!favorites.contains(point)) return;
+    final saved = await favorites.toggle(point);
+    _message(
+      saved
+          ? 'Rimosso dai preferiti.'
+          : 'Impossibile aggiornare i preferiti. Riprova.',
+    );
+  }
+
+  Widget _favoritesSection(FavoritesController favorites) {
+    return ListenableBuilder(
+      listenable: favorites,
+      builder: (context, _) {
+        final theme = Theme.of(context);
+        final points = favorites.points;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Cassonetti preferiti${favorites.ready ? ' (${points.length})' : ''}',
+              style: theme.textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            if (favorites.loading)
+              const LinearProgressIndicator()
+            else if (favorites.loadFailed)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Impossibile leggere i preferiti.'),
+                trailing: TextButton(
+                  onPressed: () => favorites.load(),
+                  child: const Text('Riprova'),
+                ),
+              )
+            else if (points.isEmpty)
+              const Text(
+                'Nessun cassonetto salvato. Usa il cuore nel dettaglio di un cassonetto per aggiungerlo.',
+              )
+            else ...[
+              const Text(
+                'Usa il filtro Solo preferiti nella mappa per aprire i punti ancora presenti nei dati OpenStreetMap.',
+              ),
+              const SizedBox(height: 8),
+              for (final point in points)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.favorite,
+                    color: theme.colorScheme.primary,
+                  ),
+                  title: Text(point.title),
+                  subtitle: Text(
+                    [
+                      point.address ?? 'OSM ${point.key}',
+                      if (point.materials.isNotEmpty)
+                        point.materials.join(' · '),
+                    ].join('\n'),
+                  ),
+                  trailing: IconButton(
+                    tooltip: 'Rimuovi dai preferiti',
+                    onPressed: favorites.saving || _busy
+                        ? null
+                        : () => _removeFavorite(favorites, point),
+                    icon: const Icon(Icons.close),
+                  ),
+                ),
+            ],
+            if (favorites.saving) const LinearProgressIndicator(),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final name = _updatedName ?? widget.user.displayName ?? 'Utente EcoCycle';
+    final favorites = widget.favorites;
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -147,6 +234,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     }
                   },
           ),
+        if (favorites != null) ...[
+          const Divider(),
+          const SizedBox(height: 12),
+          _favoritesSection(favorites),
+        ],
         const Divider(),
         const SizedBox(height: 12),
         Text('Impostazioni', style: theme.textTheme.titleMedium),

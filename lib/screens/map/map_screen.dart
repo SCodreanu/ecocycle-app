@@ -7,13 +7,20 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/bin_status.dart';
 import '../../models/recycling_point.dart';
+import '../../services/favorites_controller.dart';
 import '../../services/recycling_service.dart';
 import 'bin_detail_screen.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key, required this.onReport, this.service});
+  const MapScreen({
+    super.key,
+    required this.onReport,
+    this.service,
+    this.favorites,
+  });
   final ValueChanged<RecyclingPoint> onReport;
   final RecyclingService? service;
+  final FavoritesController? favorites;
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
@@ -44,6 +51,7 @@ class _MapScreenState extends State<MapScreen> {
   LatLng? _userLocation;
   bool _locating = false, _list = false, _tileFailed = false;
   String _query = '', _material = '';
+  bool _onlyFavorites = false;
   BinStatus? _status;
   String _locationMessage = 'Posizione non richiesta';
   Future<bool> Function()? _settings;
@@ -163,13 +171,72 @@ class _MapScreenState extends State<MapScreen> {
     _locationState('Impossibile aprire le impostazioni.');
   }
 
-  void _detail(RecyclingPoint point) => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (_) =>
-          BinDetailScreen(point: point, onReport: () => widget.onReport(point)),
-    ),
-  );
-  void _preview(RecyclingPoint point) {
+  double _distanceBetweenPoints(RecyclingPoint first, RecyclingPoint second) {
+    return Geolocator.distanceBetween(
+      first.latitude,
+      first.longitude,
+      second.latitude,
+      second.longitude,
+    );
+  }
+
+  List<RecyclingPoint> _findAlternatives(
+    RecyclingPoint selected,
+    List<RecyclingPoint> allPoints,
+  ) {
+    if (!selected.isContainer || selected.materials.isEmpty) {
+      return [];
+    }
+
+    final alternatives = allPoints.where((point) {
+      if (point.key == selected.key || !point.isContainer) {
+        return false;
+      }
+
+      final sameMaterial = point.materials.any(
+        (material) => selected.materials.contains(material),
+      );
+
+      if (!sameMaterial) {
+        return false;
+      }
+
+      final status = BinStatusData.forPoint(point).status;
+
+      final isAvailable =
+          status == BinStatus.normal || status == BinStatus.nearlyFull;
+
+      return isAvailable && _distanceBetweenPoints(selected, point) <= 3000;
+    }).toList();
+
+    alternatives.sort(
+      (a, b) => _distanceBetweenPoints(
+        selected,
+        a,
+      ).compareTo(_distanceBetweenPoints(selected, b)),
+    );
+
+    return alternatives.take(3).toList();
+  }
+
+  void _detail(RecyclingPoint point, List<RecyclingPoint> allPoints) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => BinDetailScreen(
+          point: point,
+          favorites: widget.favorites,
+          alternatives: _findAlternatives(point, allPoints),
+          onAlternativeSelected: (alternative) {
+            Navigator.of(context).pop();
+            _detail(alternative, allPoints);
+          },
+          onReport: () => widget.onReport(point),
+        ),
+      ),
+    );
+  }
+
+  void _preview(RecyclingPoint point, List<RecyclingPoint> allPoints) {
     final demo = BinStatusData.forPoint(point);
     showModalBottomSheet<void>(
       context: context,
@@ -213,7 +280,7 @@ class _MapScreenState extends State<MapScreen> {
               FilledButton(
                 onPressed: () {
                   Navigator.of(sheet).pop();
-                  _detail(point);
+                  _detail(point, allPoints);
                 },
                 child: const Text('Vedi dettaglio'),
               ),
@@ -231,7 +298,7 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
-  Widget _pointRow(RecyclingPoint point) {
+  Widget _pointRow(RecyclingPoint point, List<RecyclingPoint> allPoints) {
     final demo = BinStatusData.forPoint(point);
     return ListTile(
       leading: Icon(
@@ -249,13 +316,29 @@ class _MapScreenState extends State<MapScreen> {
             '${(Geolocator.distanceBetween(loc.latitude, loc.longitude, point.latitude, point.longitude) / 1000).toStringAsFixed(1)} km in linea d’aria',
         ].join('\n'),
       ),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: () => _detail(point),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.favorites?.contains(point) == true)
+            Icon(Icons.favorite, color: Theme.of(context).colorScheme.primary),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+      onTap: () => _detail(point, allPoints),
     );
   }
 
   @override
-  Widget build(BuildContext context) => FutureBuilder<List<RecyclingPoint>>(
+  Widget build(BuildContext context) {
+    final favorites = widget.favorites;
+    if (favorites == null) return _buildMap(context);
+    return ListenableBuilder(
+      listenable: favorites,
+      builder: (context, _) => _buildMap(context),
+    );
+  }
+
+  Widget _buildMap(BuildContext context) => FutureBuilder<List<RecyclingPoint>>(
     future: _points,
     builder: (context, snapshot) {
       final waiting = snapshot.connectionState == ConnectionState.waiting;
@@ -287,6 +370,8 @@ class _MapScreenState extends State<MapScreen> {
       final points = all
           .where(
             (point) =>
+                (!_onlyFavorites ||
+                    widget.favorites?.contains(point) == true) &&
                 (activeMaterial.isEmpty ||
                     point.materials.contains(activeMaterial)) &&
                 (_status == null ||
@@ -402,6 +487,19 @@ class _MapScreenState extends State<MapScreen> {
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ),
+                if (widget.favorites != null)
+                  FilterChip(
+                    label: const Text('Solo preferiti'),
+                    avatar: Icon(
+                      _onlyFavorites ? Icons.favorite : Icons.favorite_border,
+                      size: 18,
+                    ),
+                    showCheckmark: false,
+                    selected: _onlyFavorites,
+                    onSelected: widget.favorites!.ready
+                        ? (value) => setState(() => _onlyFavorites = value)
+                        : null,
+                  ),
                 IconButton(
                   onPressed: _locating || waiting ? null : _retry,
                   tooltip: 'Aggiorna punti',
@@ -410,6 +508,19 @@ class _MapScreenState extends State<MapScreen> {
               ],
             ),
           ),
+          if (widget.favorites?.loadFailed == true)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Expanded(child: Text('Preferiti non disponibili.')),
+                  TextButton(
+                    onPressed: () => widget.favorites!.load(),
+                    child: const Text('Riprova'),
+                  ),
+                ],
+              ),
+            ),
           if (_supportsLocation)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
@@ -454,7 +565,7 @@ class _MapScreenState extends State<MapScreen> {
                                 width: 44,
                                 height: 44,
                                 child: GestureDetector(
-                                  onTap: () => _preview(point),
+                                  onTap: () => _preview(point, all),
                                   child: Tooltip(
                                     message: point.title,
                                     child: Center(
@@ -546,6 +657,7 @@ class _MapScreenState extends State<MapScreen> {
                                           color: status.color,
                                         ),
                                         title: Text(status.label),
+                                        subtitle: Text(status.description),
                                       ),
                                     const ListTile(
                                       leading: Icon(Icons.recycling),
@@ -622,7 +734,8 @@ class _MapScreenState extends State<MapScreen> {
                     : ListView.separated(
                         itemCount: points.length,
                         separatorBuilder: (_, _) => const Divider(height: 1),
-                        itemBuilder: (_, index) => _pointRow(points[index]),
+                        itemBuilder: (_, index) =>
+                            _pointRow(points[index], all),
                       ),
               ],
             ),

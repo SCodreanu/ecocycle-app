@@ -2,11 +2,15 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../models/recycling_point.dart';
 import '../../services/local_store.dart';
+import '../../services/xp_service.dart';
 
 class ReportScreen extends StatefulWidget {
   const ReportScreen({
@@ -154,7 +158,15 @@ class _ReportScreenState extends State<ReportScreen> {
     try {
       final records = await widget.store.readRecords('reports');
       final date = DateTime.now();
+      final creditedDays = XpSummary.uniqueDays([
+        ...records,
+        ...await widget.store.readRecords('report_xp_days'),
+      ]);
+      final earnedXp = !creditedDays.contains(XpSummary.dayKey(date));
       final point = _point;
+      final position = _position;
+      final category = _category;
+      final description = _description.text.trim();
       if (_photo != null) {
         final root = await getApplicationDocumentsDirectory();
         final directory = Directory(
@@ -168,11 +180,16 @@ class _ReportScreenState extends State<ReportScreen> {
       final record = <String, dynamic>{
         'id': date.microsecondsSinceEpoch.toString(),
         'date': date.toIso8601String(),
-        'category': _category,
-        'description': _description.text.trim(),
+        'category': category,
+        'description': description,
         'point': point?.key,
-        'latitude': _position?.latitude ?? point?.latitude,
-        'longitude': _position?.longitude ?? point?.longitude,
+        'latitude': position?.latitude ?? point?.latitude,
+        'longitude': position?.longitude ?? point?.longitude,
+        'locationSource': position != null
+            ? 'gps'
+            : point != null
+            ? 'osm'
+            : null,
         'photo': copied?.path,
       };
       final next = [...records, record];
@@ -194,8 +211,9 @@ class _ReportScreenState extends State<ReportScreen> {
         context: context,
         builder: (context) => AlertDialog(
           title: const Text('Segnalazione salvata'),
-          content: const Text(
-            'La segnalazione è stata registrata solo su questo dispositivo. Non è stata inviata a un ente o gestore. La prima segnalazione del giorno assegna 50 XP dimostrativi.',
+          content: Text(
+            'La segnalazione è stata salvata solo su questo dispositivo. Nessun invio esterno.\n\n'
+            '${earnedXp ? '+50 XP dimostrativi.' : 'Hai già ottenuto gli XP per una segnalazione oggi.'}',
           ),
           actions: [
             TextButton(
@@ -220,38 +238,246 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
-  void _showRecord(
-    Map<String, dynamic> record,
-  ) => Navigator.of(context).push<void>(
-    MaterialPageRoute(
-      builder: (context) => Scaffold(
-        appBar: AppBar(title: const Text('Segnalazione locale')),
-        body: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Text(
-              record['category'] as String,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            Text((record['date'] as String).split('T').first),
-            const SizedBox(height: 12),
-            Text(record['description'] as String),
-            if (record['point'] != null) Text('Punto OSM: ${record['point']}'),
-            if (record['latitude'] != null)
-              Text('Coordinate: ${record['latitude']}, ${record['longitude']}'),
-            const SizedBox(height: 12),
-            if (record['photo'] case final String photo)
-              Image.file(
-                File(photo),
+  String _formatDate(Object? raw) {
+    final date = DateTime.tryParse(raw?.toString() ?? '')?.toLocal();
+    if (date == null) return 'Data non disponibile';
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(date.day)}/${two(date.month)}/${date.year} · '
+        '${two(date.hour)}:${two(date.minute)}';
+  }
+
+  void _showPhoto(String path) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          appBar: AppBar(title: const Text('Fotografia')),
+          body: Center(
+            child: InteractiveViewer(
+              child: Image.file(
+                File(path),
+                fit: BoxFit.contain,
                 errorBuilder: (_, _, _) => const Text('Foto non disponibile'),
               ),
-            const SizedBox(height: 12),
-            const Text('Salvata sul dispositivo · non inviata'),
-          ],
+            ),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
+
+  void _showPosition(double latitude, double longitude) {
+    final location = LatLng(latitude, longitude);
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: const Text('Posizione segnalazione')),
+          body: Column(
+            children: [
+              Expanded(
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: location,
+                    initialZoom: 16,
+                    maxZoom: 19,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      tileProvider: NetworkTileProvider(
+                        headers: {
+                          'User-Agent': 'EcoCycle/1.0 (+https://github.com/SCodreanu/ecocycle-app)',
+                        },
+                      ),
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: location,
+                          width: 44,
+                          height: 44,
+                          child: Icon(
+                            Icons.location_on,
+                            size: 40,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              SafeArea(
+                top: false,
+                child: Column(
+                  children: [
+                    Text(
+                      '${latitude.toStringAsFixed(5)}, ${longitude.toStringAsFixed(5)}',
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        try {
+                          final opened = await launchUrl(
+                            Uri.parse(
+                              'https://www.openstreetmap.org/copyright',
+                            ),
+                            mode: LaunchMode.externalApplication,
+                          );
+                          if (opened) return;
+                        } catch (_) {}
+                        if (context.mounted)
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'https://www.openstreetmap.org/copyright',
+                              ),
+                            ),
+                          );
+                      },
+                      child: const Text('© OpenStreetMap contributors'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _deleteRecord(Map<String, dynamic> record) async {
+    if (_busy) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminare la segnalazione?'),
+        content: const Text(
+          'La segnalazione e la foto locale verranno rimosse. Gli XP già guadagnati restano invariati.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true || _busy) return;
+    setState(() {
+      _busy = true;
+    });
+    try {
+      final records = await widget.store.readRecords('reports');
+      final matching = records.where((r) => r['id'] == record['id']).toList();
+      if (matching.isEmpty) return;
+      // Archive only the day before removing the source of the XP credit.
+      await XpService(widget.store).preserveReportCredit(matching.first);
+      final next = records.where((r) => r['id'] != record['id']).toList();
+      await widget.store.writeRecords('reports', next);
+      var photoRemoved = true;
+      final photo = matching.first['photo'];
+      if (photo is String && !next.any((r) => r['photo'] == photo)) {
+        try {
+          final root = await getApplicationDocumentsDirectory();
+          final folder = Directory(
+            '${root.path}/reports/${Uri.encodeComponent(widget.store.uid)}',
+          );
+          final file = File(photo);
+          if (file.parent.absolute.path == folder.absolute.path &&
+              await file.exists()) {
+            await file.delete();
+          }
+        } catch (_) {
+          photoRemoved = false;
+        }
+      }
+      if (!mounted) return;
+      setState(() {
+        _records = Future.value(next);
+      });
+      widget.onXpChanged?.call();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            photoRemoved ? 'Segnalazione eliminata. XP invariati.' : 'Segnalazione eliminata, ma non è stato possibile rimuovere la foto.',
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossibile eliminare la segnalazione. Riprova.'),
+          ),
+        );
+    } finally {
+      if (mounted)
+        setState(() {
+          _busy = false;
+        });
+    }
+  }
+
+  void _showRecord(Map<String, dynamic> record) {
+    final lat = record['latitude'];
+    final lon = record['longitude'];
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(title: const Text('Segnalazione locale')),
+          body: ListView(
+            padding: const EdgeInsets.all(20),
+            children: [
+              Text(
+                record['category'] as String,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+              Text(_formatDate(record['date'])),
+              const SizedBox(height: 12),
+              Text(record['description'] as String),
+              if (record['point'] != null)
+                Text('Punto OSM: ${record['point']}'),
+              if (lat is num && lon is num) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Coordinate: ${lat.toStringAsFixed(5)}, ${lon.toStringAsFixed(5)}',
+                ),
+                OutlinedButton.icon(
+                  onPressed: () =>
+                      _showPosition(lat.toDouble(), lon.toDouble()),
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text('Visualizza posizione'),
+                ),
+              ],
+              if (record['photo'] case final String photo) ...[
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: () => _showPhoto(photo),
+                  child: Image.file(
+                    File(photo),
+                    errorBuilder: (_, _, _) =>
+                        const Text('Foto non disponibile'),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => _showPhoto(photo),
+                  child: const Text('Apri foto a schermo intero'),
+                ),
+              ],
+              const SizedBox(height: 12),
+              const Text('Salvata sul dispositivo · non inviata'),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -263,6 +489,8 @@ class _ReportScreenState extends State<ReportScreen> {
         const Text(
           'Registra una segnalazione sul dispositivo. Nessun invio esterno.',
         ),
+        const SizedBox(height: 8),
+        const Text('* Campi obbligatori. Foto e posizione facoltative.'),
         const SizedBox(height: 20),
         Form(
           key: _form,
@@ -273,7 +501,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 key: ValueKey(_formRevision),
                 initialValue: _category,
                 isExpanded: true,
-                decoration: const InputDecoration(labelText: 'Tipologia'),
+                decoration: const InputDecoration(labelText: 'Tipologia *'),
                 items: _categories
                     .map(
                       (category) => DropdownMenuItem(
@@ -288,6 +516,15 @@ class _ReportScreenState extends State<ReportScreen> {
                 validator: (value) =>
                     value == null ? 'Seleziona una tipologia.' : null,
               ),
+              if (_category == 'Odore di gas / fumo')
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(12),
+                    child: Text(
+                      'Se rilevi fumo, odore di gas o un pericolo immediato, allontanati e chiama il 112 da un luogo sicuro. EcoCycle non invia richieste di soccorso.',
+                    ),
+                  ),
+                ),
               const SizedBox(height: 16),
               TextFormField(
                 controller: _description,
@@ -295,7 +532,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 maxLines: 4,
                 maxLength: 500,
                 decoration: const InputDecoration(
-                  labelText: 'Descrizione',
+                  labelText: 'Descrizione *',
                   alignLabelWithHint: true,
                 ),
                 validator: (value) => (value ?? '').trim().isEmpty
@@ -320,13 +557,36 @@ class _ReportScreenState extends State<ReportScreen> {
                 Text(
                   'Posizione: ${_position!.latitude.toStringAsFixed(5)}, ${_position!.longitude.toStringAsFixed(5)}',
                 ),
+              if (_position != null || _point != null)
+                OutlinedButton.icon(
+                  onPressed: _busy
+                      ? null
+                      : () => _showPosition(
+                          _position?.latitude ?? _point!.latitude,
+                          _position?.longitude ?? _point!.longitude,
+                        ),
+                  icon: const Icon(Icons.map_outlined),
+                  label: const Text('Anteprima posizione'),
+                ),
+              if (_position != null)
+                TextButton(
+                  onPressed: _busy
+                      ? null
+                      : () => setState(() {
+                          _position = null;
+                        }),
+                  child: const Text('Rimuovi posizione GPS'),
+                ),
               OutlinedButton.icon(
                 onPressed: _busy ? null : _locate,
                 icon: const Icon(Icons.my_location),
                 label: const Text('Allega posizione attuale'),
               ),
               const SizedBox(height: 12),
-              Text('Allegato fotografico', style: theme.textTheme.titleMedium),
+              Text(
+                'Allegato fotografico (facoltativo)',
+                style: theme.textTheme.titleMedium,
+              ),
               if (_photo != null) ...[
                 const SizedBox(height: 8),
                 ClipRRect(
@@ -338,6 +598,10 @@ class _ReportScreenState extends State<ReportScreen> {
                     errorBuilder: (_, _, _) =>
                         const Text('Foto non disponibile'),
                   ),
+                ),
+                TextButton(
+                  onPressed: _busy ? null : () => _showPhoto(_photo!.path),
+                  child: const Text('Apri foto a schermo intero'),
                 ),
                 TextButton(
                   onPressed: _busy ? null : () => setState(() => _photo = null),
@@ -408,10 +672,14 @@ class _ReportScreenState extends State<ReportScreen> {
                     leading: const Icon(Icons.flag_outlined),
                     title: Text(record['category'] as String),
                     subtitle: Text(
-                      '${(record['date'] as String).split('T').first} · Salvata localmente',
+                      '${_formatDate(record['date'])}\nSalvata localmente${record['photo'] != null ? ' · Foto' : ''}${record['latitude'] != null ? ' · Posizione' : ''}',
                     ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _showRecord(record),
+                    trailing: IconButton(
+                      tooltip: 'Elimina segnalazione',
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: _busy ? null : () => _deleteRecord(record),
+                    ),
+                    onTap: _busy ? null : () => _showRecord(record),
                   ),
               ],
             );

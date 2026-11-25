@@ -84,4 +84,14 @@ void main() {
     expect(xp.legacyRedemptions.length, 1);
     expect(xp.redeemed('tree'), isFalse);
   });
+  test('Archived report day preserves XP without double credit', () {
+    final active = report('2026-11-25T09:00:00');
+    final archived = report('2026-11-25');
+    final before = summary(reports: [active]);
+    final after = summary(reports: [archived]);
+    final repeated = summary(reports: [archived, active]);
+    expect(after.totalXp, before.totalXp);
+    expect(repeated.totalXp, before.totalXp);
+    expect(after.level, before.level);
+  });
 }

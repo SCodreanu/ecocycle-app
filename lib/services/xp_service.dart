@@ -51,11 +51,25 @@ class XpService {
 
   Future<XpSummary> load() async => XpSummary(
     onboardingCompleted: await store.onboardingCompleted(),
-    reports: await store.readRecords('reports'),
+    reports: [
+      ...await store.readRecords('reports'),
+      ...await store.readRecords('report_xp_days'),
+    ],
     activities: await store.readRecords('recycling_activities'),
     redemptions: await store.readRecords('rewards_v2'),
     legacyRedemptions: await store.readRecords('rewards'),
   );
+
+  // Retain only the earned calendar day, not the deleted report content.
+  Future<void> preserveReportCredit(Map<String, dynamic> report) async {
+    final days = XpSummary.uniqueDays([report]);
+    if (days.isEmpty) return;
+    final existing = await store.readRecords('report_xp_days');
+    final next = {...XpSummary.uniqueDays(existing), ...days};
+    await store.writeRecords('report_xp_days', [
+      for (final day in next) {'date': day},
+    ]);
+  }
 
   Future<XpSummary> recordRecycling(String material) async {
     final current = await load();

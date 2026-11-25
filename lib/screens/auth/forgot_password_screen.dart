@@ -1,106 +1,105 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/eco_ui.dart';
 import '../../services/auth_service.dart';
+import '../../widgets/brand_header.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key, required this.authService});
-
   final AuthService authService;
-
   @override
   State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
 }
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-
-  bool _isLoading = false;
-  bool _requestCompleted = false;
-  String? _errorMessage;
-
+  final _email = TextEditingController();
+  bool _loading = false, _completed = false;
+  String? _error;
   @override
   void dispose() {
-    _emailController.dispose();
+    _email.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
-    if (_isLoading || !_formKey.currentState!.validate()) return;
-
+    if (_loading || !_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
     setState(() {
-      _isLoading = true;
-      _requestCompleted = false;
-      _errorMessage = null;
+      _loading = true;
+      _error = null;
+      _completed = false;
     });
-
-    String? errorMessage;
     try {
-      await widget.authService.sendPasswordResetEmail(
-        _emailController.text.trim(),
-      );
+      await widget.authService.sendPasswordResetEmail(_email.text.trim());
+      if (mounted) setState(() => _completed = true);
     } catch (error) {
-      errorMessage = AuthService.errorMessage(error);
+      if (mounted) setState(() => _error = AuthService.errorMessage(error));
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-
-    if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-      _requestCompleted = errorMessage == null;
-      _errorMessage = errorMessage;
-    });
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return PopScope(
-      canPop: !_isLoading,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Reimposta la password'),
-          leading: IconButton(
-            onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
-            tooltip: 'Indietro',
-            icon: const BackButtonIcon(),
-          ),
-        ),
-        body: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_loading,
+    child: Scaffold(
+      appBar: AppBar(title: const Text('Recupero password')),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(18),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: EcoPanel(
+                padding: const EdgeInsets.all(22),
                 child: Form(
                   key: _formKey,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      const BrandHeader(
+                        title: 'Password dimenticata?',
+                        subtitle: 'Inserisci il tuo indirizzo email. Ti invieremo un link per reimpostare la password se esiste un account.',
+                      ),
                       TextFormField(
-                        controller: _emailController,
-                        enabled: !_isLoading,
-                        decoration: const InputDecoration(labelText: 'Email'),
+                        controller: _email,
+                        enabled: !_loading && !_completed,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.mail_outline),
+                        ),
                         keyboardType: TextInputType.emailAddress,
                         validator: AuthService.validateEmail,
                         onFieldSubmitted: (_) => _submit(),
                       ),
-                      const SizedBox(height: 24),
-                      if (_errorMessage case final message?)
+                      const SizedBox(height: 16),
+                      if (_error != null)
                         Text(
-                          message,
-                          style: TextStyle(color: theme.colorScheme.error),
+                          _error!,
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                         ),
-                      if (_requestCompleted)
-                        const Text(
-                          'Se esiste un account con questa email, riceverai un link per reimpostare la password.',
+                      if (_completed) ...[
+                        const ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.mark_email_read_outlined),
+                          title: Text('Controlla la tua email'),
+                          subtitle: Text(
+                            'Se esiste un account, riceverai un link per reimpostare la password.',
+                          ),
                         ),
-                      FilledButton(
-                        onPressed: _isLoading ? null : _submit,
-                        child: const Text('Invia link'),
-                      ),
-                      if (_isLoading) const LinearProgressIndicator(),
+                        FilledButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Torna al login'),
+                        ),
+                      ] else
+                        FilledButton(
+                          onPressed: _loading ? null : _submit,
+                          child: const Text('Invia link'),
+                        ),
+                      if (_loading) const LinearProgressIndicator(),
                     ],
                   ),
                 ),
@@ -109,6 +108,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
 }

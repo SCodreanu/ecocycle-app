@@ -1,24 +1,50 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
+import '../../widgets/eco_ui.dart';
+
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../models/bin_status.dart';
 import '../../models/recycling_point.dart';
+import '../../services/favorites_controller.dart';
 import '../../services/recycling_service.dart';
+import '../../widgets/eco_loader.dart';
+import 'bin_detail_screen.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
-
+  const MapScreen({
+    super.key,
+    required this.onReport,
+    this.service,
+    this.favorites,
+  });
+  final ValueChanged<RecyclingPoint> onReport;
+  final RecyclingService? service;
+  final FavoritesController? favorites;
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
 
 class _MapScreenState extends State<MapScreen> {
-  final _recyclingService = RecyclingService();
-  final _mapController = MapController();
-
-  late final _tileLayer = TileLayer(
+  late final _service = widget.service ?? RecyclingService();
+  MapController _controller = MapController();
+  late Future<List<RecyclingPoint>> _points;
+  late TileLayer _tileLayer = _createTileLayer();
+  TileLayer _createTileLayer() => TileLayer(
+    errorTileCallback: (_, _, _) {
+      if (mounted && !_tileFailed) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_tileFailed) setState(() => _tileFailed = true);
+        });
+        WidgetsBinding.instance.ensureVisualUpdate();
+      }
+    },
     urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     tileProvider: NetworkTileProvider(
       headers: {
@@ -28,63 +54,97 @@ class _MapScreenState extends State<MapScreen> {
       },
     ),
   );
-
-  late Future<List<RecyclingPoint>> _points;
   LatLng? _userLocation;
-  bool _isLocating = false;
-
+  bool _locating = false, _list = false, _tileFailed = false;
+  String _query = '', _material = '';
+  bool _onlyFavorites = false;
+  int _zoomBucket = 12;
+  BinStatus? _status;
+  String _locationMessage = 'Posizione non richiesta';
+  Future<bool> Function()? _settings;
+  bool get _supportsLocation =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   @override
   void initState() {
     super.initState();
-
-    _points = _recyclingService.fetchRecyclingPoints();
+    _points = _service.fetchRecyclingPoints();
   }
 
   @override
   void dispose() {
-    _mapController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _centerOnUser() async {
-    if (_isLocating) return;
+  void _retry() => setState(() {
+    _tileFailed = false;
+    _points = _service.fetchRecyclingPoints();
+  });
+  void _retryFromEmptyOrError() {
+    _controller.dispose();
+    _controller = MapController();
+    _zoomBucket = 12;
+    _tileLayer = _createTileLayer();
+    _retry();
+  }
 
-    ScaffoldMessenger.of(context).removeCurrentSnackBar();
-    setState(() {
-      _isLocating = true;
-      _userLocation = null;
-    });
-
+  Future<void> _openAttribution() async {
     try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!mounted) return;
-      if (!serviceEnabled) {
-        _showLocationServiceDisabled();
+      if (await launchUrl(
+        Uri.parse('https://www.openstreetmap.org/copyright'),
+        mode: LaunchMode.externalApplication,
+      ))
+        return;
+    } catch (_) {}
+    if (mounted)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('https://www.openstreetmap.org/copyright'),
+        ),
+      );
+  }
+
+  void _locationState(String message, [Future<bool> Function()? settings]) {
+    if (mounted)
+      setState(() {
+        _locationMessage = message;
+        _settings = settings;
+        if (message != 'Posizione disponibile') _userLocation = null;
+      });
+  }
+
+  Future<void> _centerOnUser() async {
+    if (_locating) return;
+    setState(() {
+      _locating = true;
+      _settings = null;
+    });
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        _locationState(
+          'Localizzazione disattivata',
+          Geolocator.openLocationSettings,
+        );
         return;
       }
-
+      if (!mounted) return;
       var permission = await Geolocator.checkPermission();
       if (!mounted) return;
-      // Android also reports denied before the first permission request.
-      if (permission == LocationPermission.denied) {
+      if (permission == LocationPermission.denied)
         permission = await Geolocator.requestPermission();
-        if (!mounted) return;
-      }
-
+      if (!mounted) return;
       if (permission == LocationPermission.deniedForever) {
-        _showLocationMessage(
-          'Consenti l’accesso alla posizione nelle impostazioni dell’app.',
-          openSettings: Geolocator.openAppSettings,
+        _locationState(
+          'Permesso negato definitivamente',
+          Geolocator.openAppSettings,
         );
         return;
       }
-      if (permission == LocationPermission.denied) {
-        _showLocationMessage(
-          'Permesso di posizione negato. Tocca il pulsante per riprovare.',
-        );
+      if (permission != LocationPermission.always &&
+          permission != LocationPermission.whileInUse) {
+        _locationState('Permesso negato. Riprova.');
         return;
       }
-
       final position = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -92,204 +152,895 @@ class _MapScreenState extends State<MapScreen> {
         ),
       );
       if (!mounted) return;
-
       final location = LatLng(position.latitude, position.longitude);
-      _mapController.move(location, _mapController.camera.zoom);
+      final inCoverage = RecyclingService.isWithinCoverage(
+        location.latitude,
+        location.longitude,
+      );
       setState(() {
         _userLocation = location;
+        _locationMessage = inCoverage ? 'Posizione disponibile' : 'Sei fuori dall’area coperta. I punti disponibili sono quelli di Torino e dintorni.';
       });
+      if (!_list) {
+        if (inCoverage) {
+          _controller.move(location, _controller.camera.zoom);
+        } else {
+          _controller.move(const LatLng(45.07, 7.675), 12);
+        }
+      }
     } on LocationServiceDisabledException {
-      if (mounted) _showLocationServiceDisabled();
+      _locationState(
+        'Localizzazione disattivata',
+        Geolocator.openLocationSettings,
+      );
     } catch (_) {
-      if (mounted) {
-        _showLocationMessage('Impossibile ottenere la posizione. Riprova.');
-      }
+      _locationState('Posizione non disponibile. Riprova.');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLocating = false;
-        });
-      }
+      if (mounted) setState(() => _locating = false);
     }
   }
 
-  void _showLocationServiceDisabled() {
-    _showLocationMessage(
-      'La localizzazione è disattivata. Attivala nelle impostazioni.',
-      openSettings: Geolocator.openLocationSettings,
+  Future<void> _openSettings() async {
+    try {
+      if (await _settings?.call() == true) return;
+    } catch (_) {
+      /* The user can open Android settings manually. */
+    }
+    _locationState('Impossibile aprire le impostazioni.');
+  }
+
+  double _distanceBetweenPoints(RecyclingPoint first, RecyclingPoint second) {
+    return Geolocator.distanceBetween(
+      first.latitude,
+      first.longitude,
+      second.latitude,
+      second.longitude,
     );
   }
 
-  void _showLocationMessage(
-    String message, {
-    Future<bool> Function()? openSettings,
-  }) {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger
-      ..removeCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          action: openSettings == null
-              ? null
-              : SnackBarAction(
-                  label: 'Impostazioni',
-                  onPressed: () async {
-                    try {
-                      if (await openSettings()) return;
-                    } catch (_) {
-                      // Show the same message if Android cannot open settings.
-                    }
-                    if (mounted) {
-                      _showLocationMessage(
-                        'Impossibile aprire le impostazioni di Android.',
-                      );
-                    }
-                  },
-                ),
-        ),
-      );
+  List<RecyclingPoint> _findAlternatives(
+    RecyclingPoint selected,
+    List<RecyclingPoint> allPoints,
+  ) {
+    if (!selected.isContainer || selected.materials.isEmpty) {
+      return [];
+    }
+
+    final knownMaterials = selected.materialCodes
+        .where(RecyclingPoint.materialNames.containsKey)
+        .map((code) => RecyclingPoint.materialNames[code]!)
+        .toSet();
+    if (knownMaterials.isEmpty) return [];
+
+    final alternatives = allPoints.where((point) {
+      if (point.key == selected.key || !point.isContainer) {
+        return false;
+      }
+
+      final sameMaterial = point.materials.any(knownMaterials.contains);
+
+      if (!sameMaterial) {
+        return false;
+      }
+
+      final status = BinStatusData.forPoint(point).status;
+
+      final isAvailable =
+          status == BinStatus.normal || status == BinStatus.nearlyFull;
+
+      return isAvailable && _distanceBetweenPoints(selected, point) <= 3000;
+    }).toList();
+
+    alternatives.sort(
+      (a, b) => _distanceBetweenPoints(
+        selected,
+        a,
+      ).compareTo(_distanceBetweenPoints(selected, b)),
+    );
+
+    return alternatives.take(3).toList();
   }
 
-  void _retry() {
-    setState(() {
-      _points = _recyclingService.fetchRecyclingPoints();
-    });
+  void _detail(RecyclingPoint point, List<RecyclingPoint> allPoints) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => BinDetailScreen(
+          point: point,
+          favorites: widget.favorites,
+          alternatives: _findAlternatives(point, allPoints),
+          onAlternativeSelected: (alternative) {
+            Navigator.of(context).pop();
+            _detail(alternative, allPoints);
+          },
+          onReport: () => widget.onReport(point),
+        ),
+      ),
+    );
+  }
+
+  void _preview(RecyclingPoint point, List<RecyclingPoint> allPoints) {
+    final demo = BinStatusData.forPoint(point);
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (sheet) => SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    EcoIconBadge(
+                      icon: point.isContainer
+                          ? demo.status.icon
+                          : Icons.recycling,
+                      color: point.isContainer ? demo.status.color : null,
+                      size: 48,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        point.title,
+                        style: Theme.of(sheet).textTheme.titleLarge,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(point.address ?? 'Indirizzo non censito'),
+                Text(
+                  point.materials.isEmpty
+                      ? 'Materiali non disponibili'
+                      : point.materials.join(' · '),
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (point.isContainer) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(demo.status.icon, color: demo.status.color),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${demo.status.label} · ${demo.fillLevel}%',
+                        ),
+                      ),
+                      const Text('Demo'),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  LinearProgressIndicator(
+                    value: demo.fillLevel / 100,
+                    color: demo.status.color,
+                  ),
+                ],
+                const SizedBox(height: 20),
+                FilledButton(
+                  onPressed: () {
+                    Navigator.of(sheet).pop();
+                    _detail(point, allPoints);
+                  },
+                  child: const Text('Vedi dettaglio'),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Navigator.of(sheet).pop();
+                    widget.onReport(point);
+                  },
+                  child: const Text('Segnala un problema'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _pointRow(RecyclingPoint point, List<RecyclingPoint> allPoints) {
+    final demo = BinStatusData.forPoint(point);
+    return ListTile(
+      leading: EcoIconBadge(
+        icon: point.isContainer ? demo.status.icon : Icons.recycling,
+        color: point.isContainer ? demo.status.color : null,
+      ),
+      title: Text(point.title),
+      subtitle: Text(
+        [
+          point.address ?? 'Indirizzo non censito',
+          if (point.isContainer)
+            '${demo.status.label} · ${demo.fillLevel}% (demo)',
+          if (point.materials.isNotEmpty) point.materials.join(' · '),
+          if (_userLocation case final loc?)
+            '${(Geolocator.distanceBetween(loc.latitude, loc.longitude, point.latitude, point.longitude) / 1000).toStringAsFixed(1)} km in linea d’aria',
+        ].join('\n'),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.favorites?.contains(point) == true)
+            Icon(Icons.favorite, color: Theme.of(context).colorScheme.primary),
+          const Icon(Icons.chevron_right),
+        ],
+      ),
+      onTap: () => _detail(point, allPoints),
+    );
+  }
+
+  Future<void> _chooseMaterial(List<String> materials, String active) async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheet) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.sizeOf(sheet).height * .72,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                child: Text(
+                  'Materiali',
+                  style: Theme.of(sheet).textTheme.titleLarge,
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  children: [
+                    for (final material in ['', ...materials])
+                      ListTile(
+                        title: Text(
+                          material.isEmpty ? 'Tutti i materiali' : material,
+                        ),
+                        trailing: active == material
+                            ? const Icon(Icons.check_circle_outline)
+                            : null,
+                        onTap: () => Navigator.of(sheet).pop(material),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted && result != null) setState(() => _material = result);
+  }
+
+  Future<void> _chooseStatus() async {
+    final result = await showModalBottomSheet<int>(
+      context: context,
+      builder: (sheet) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              child: Text(
+                'Stato del cassonetto',
+                style: Theme.of(sheet).textTheme.titleLarge,
+              ),
+            ),
+            ListTile(
+              title: const Text('Tutti gli stati'),
+              trailing: _status == null ? const Icon(Icons.check) : null,
+              onTap: () => Navigator.of(sheet).pop(-1),
+            ),
+            for (final status in BinStatus.values)
+              ListTile(
+                leading: Icon(status.icon, color: status.color),
+                title: Text(status.label),
+                trailing: _status == status ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.of(sheet).pop(status.index),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (mounted && result != null)
+      setState(() => _status = result == -1 ? null : BinStatus.values[result]);
+  }
+
+  Widget _filterButton(String label, IconData icon, VoidCallback onTap) =>
+      OutlinedButton(
+        onPressed: onTap,
+        style: OutlinedButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          minimumSize: const Size(0, 42),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            const Icon(Icons.expand_more, size: 18),
+          ],
+        ),
+      );
+
+  // A geographic grid groups nearby points at low zoom. At street level each
+  // point is rendered individually. Counts refer to the currently filtered data.
+  List<Marker> _buildMarkers(
+    List<RecyclingPoint> points,
+    List<RecyclingPoint> all,
+    ColorScheme colors,
+  ) {
+    final cellSize = .018 / math.pow(2, _zoomBucket - 12);
+    final groups = <String, List<RecyclingPoint>>{};
+    for (final point in points) {
+      final key = _zoomBucket >= 16
+          ? point.key
+          : '${(point.latitude / cellSize).floor()}:${(point.longitude / cellSize).floor()}';
+      groups.putIfAbsent(key, () => []).add(point);
+    }
+    return [
+      for (final group in groups.values)
+        if (group.length > 1)
+          _clusterMarker(group, colors)
+        else
+          _singleMarker(group.first, all, colors),
+    ];
+  }
+
+  Marker _clusterMarker(List<RecyclingPoint> points, ColorScheme colors) {
+    final center = LatLng(
+      points.fold<double>(0, (sum, point) => sum + point.latitude) /
+          points.length,
+      points.fold<double>(0, (sum, point) => sum + point.longitude) /
+          points.length,
+    );
+    return Marker(
+      point: center,
+      width: 48,
+      height: 48,
+      child: Tooltip(
+        message: '${points.length} punti di raccolta',
+        child: GestureDetector(
+          onTap: () => _controller.move(
+            center,
+            math.min(19.0, _controller.camera.zoom + 2.0),
+          ),
+          child: Center(
+            child: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: colors.primary,
+                border: Border.all(color: colors.surface, width: 3),
+              ),
+              child: Text(
+                '${points.length}',
+                style: TextStyle(
+                  color: colors.onPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Marker _singleMarker(
+    RecyclingPoint point,
+    List<RecyclingPoint> all,
+    ColorScheme colors,
+  ) {
+    final demo = BinStatusData.forPoint(point);
+    final color = point.isContainer
+        ? demo.status.color
+        : const Color(0xff176b66);
+    return Marker(
+      point: LatLng(point.latitude, point.longitude),
+      width: 44,
+      height: 44,
+      child: GestureDetector(
+        onTap: () => _preview(point, all),
+        child: Tooltip(
+          message: point.title,
+          child: Center(
+            child: Container(
+              width: 31,
+              height: 31,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: color,
+                border: Border.all(color: Colors.white, width: 2),
+              ),
+              child: Icon(
+                point.isContainer ? demo.status.icon : Icons.recycling,
+                color: Colors.white,
+                size: 16,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<List<RecyclingPoint>>(
-      future: _points,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(
-              semanticsLabel:
-                  'Caricamento dei punti di riciclo',
-            ),
-          );
-        }
+    final favorites = widget.favorites;
+    if (favorites == null) return _buildMap(context);
+    return ListenableBuilder(
+      listenable: favorites,
+      builder: (context, _) => _buildMap(context),
+    );
+  }
 
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Impossibile caricare i punti di riciclo.',
-                    textAlign: TextAlign.center,
+  Widget _loadingPoints() => const Center(
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        EcoLoader(),
+        SizedBox(height: 12),
+        Text('Caricamento punti di riciclo…'),
+      ],
+    ),
+  );
+
+  Widget _buildMap(BuildContext context) => FutureBuilder<List<RecyclingPoint>>(
+    future: _points,
+    builder: (context, snapshot) {
+      final waiting = snapshot.connectionState == ConnectionState.waiting;
+      if (waiting && !snapshot.hasData) return _loadingPoints();
+      if (snapshot.hasError)
+        return _message(
+          Icons.cloud_off_outlined,
+          'Impossibile caricare i punti di riciclo.',
+          _retryFromEmptyOrError,
+        );
+      final all = snapshot.data ?? const <RecyclingPoint>[];
+      if (all.isEmpty && waiting) return _loadingPoints();
+      if (all.isEmpty)
+        return _message(
+          Icons.search_off,
+          'Nessun punto di riciclo trovato nella zona di Torino.',
+          _retryFromEmptyOrError,
+        );
+      final materials = all.expand((point) => point.materials).toSet().toList()
+        ..sort();
+      final activeMaterial = materials.contains(_material) ? _material : '';
+      final query = _query.trim().toLowerCase();
+      final points = all
+          .where(
+            (point) =>
+                (!_onlyFavorites ||
+                    widget.favorites?.contains(point) == true) &&
+                (activeMaterial.isEmpty ||
+                    point.materials.contains(activeMaterial)) &&
+                (_status == null ||
+                    point.isContainer &&
+                        BinStatusData.forPoint(point).status == _status) &&
+                (query.isEmpty ||
+                    '${point.title} ${point.address ?? ''} ${point.key} ${point.materials.join(' ')}'
+                        .toLowerCase()
+                        .contains(query)),
+          )
+          .toList();
+      final colors = Theme.of(context).colorScheme;
+      final location = _userLocation;
+      if (location != null) {
+        points.sort(
+          (a, b) =>
+              Geolocator.distanceBetween(
+                location.latitude,
+                location.longitude,
+                a.latitude,
+                a.longitude,
+              ).compareTo(
+                Geolocator.distanceBetween(
+                  location.latitude,
+                  location.longitude,
+                  b.latitude,
+                  b.longitude,
+                ),
+              ),
+        );
+      }
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    onChanged: (v) => setState(() => _query = v),
+                    decoration: const InputDecoration(
+                      hintText: 'Cerca punto o materiale',
+                      prefixIcon: Icon(Icons.search),
+                    ),
                   ),
-                  const SizedBox(height: 8),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  onPressed: _locating
+                      ? null
+                      : () => setState(() => _list = !_list),
+                  tooltip: _list ? 'Mostra mappa' : 'Mostra lista',
+                  icon: Icon(_list ? Icons.map_outlined : Icons.list),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _filterButton(
+                    activeMaterial.isEmpty
+                        ? 'Tutti i materiali'
+                        : activeMaterial,
+                    Icons.recycling,
+                    () => _chooseMaterial(materials, activeMaterial),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _filterButton(
+                    _status?.label ?? 'Tutti gli stati',
+                    Icons.tune,
+                    _chooseStatus,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 8, 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${points.length} punti · area di Torino',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+                if (widget.favorites != null)
+                  FilterChip(
+                    label: const Text('Solo preferiti'),
+                    avatar: Icon(
+                      _onlyFavorites ? Icons.favorite : Icons.favorite_border,
+                      size: 18,
+                    ),
+                    showCheckmark: false,
+                    selected: _onlyFavorites,
+                    onSelected: widget.favorites!.ready
+                        ? (value) => setState(() => _onlyFavorites = value)
+                        : null,
+                  ),
+                IconButton(
+                  onPressed: _locating || waiting ? null : _retry,
+                  tooltip: 'Aggiorna punti',
+                  icon: const Icon(Icons.refresh),
+                ),
+              ],
+            ),
+          ),
+          if (widget.favorites?.loadFailed == true)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  const Expanded(child: Text('Preferiti non disponibili.')),
                   TextButton(
-                    onPressed: _retry,
+                    onPressed: () => widget.favorites!.load(),
                     child: const Text('Riprova'),
                   ),
                 ],
               ),
             ),
-          );
-        }
-
-        final points =
-            snapshot.data ?? const <RecyclingPoint>[];
-
-        if (points.isEmpty) {
-          return const Center(
-            child: Text(
-              'Nessun punto di riciclo trovato nella zona di Torino.',
+          if (_supportsLocation)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _locationMessage,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  if (_settings != null)
+                    TextButton(
+                      onPressed: _openSettings,
+                      child: const Text('Impostazioni'),
+                    ),
+                ],
+              ),
             ),
-          );
-        }
-
-        final theme = Theme.of(context);
-        final colors = theme.colorScheme;
-        final userLocation = _userLocation;
-
-        return FlutterMap(
-          mapController: _mapController,
-          options: MapOptions(
-            initialCenter: const LatLng(45.07, 7.675),
-            initialZoom: 12,
-            maxZoom: 19,
-            backgroundColor: colors.surface,
-          ),
-          children: [
-            _tileLayer,
-            MarkerLayer(
-              markers: [
-                for (final point in points)
-                  Marker(
-                    point: LatLng(point.latitude, point.longitude),
-                    width: 28,
-                    height: 28,
-                    child: Tooltip(
-                      message: point.name ?? 'Punto di riciclo',
-                      child: CircleAvatar(
-                        backgroundColor: colors.primary,
-                        foregroundColor: colors.onPrimary,
-                        child: const Icon(Icons.recycling, size: 18),
+          if (waiting) const LinearProgressIndicator(),
+          Expanded(
+            child: IndexedStack(
+              index: _list ? 1 : 0,
+              children: [
+                Stack(
+                  children: [
+                    FlutterMap(
+                      mapController: _controller,
+                      options: MapOptions(
+                        initialCenter:
+                            location != null &&
+                                RecyclingService.isWithinCoverage(
+                                  location.latitude,
+                                  location.longitude,
+                                )
+                            ? location
+                            : const LatLng(45.07, 7.675),
+                        initialZoom: 12,
+                        maxZoom: 19,
+                        onPositionChanged: (camera, _) {
+                          final zoom = camera.zoom.floor();
+                          if (zoom != _zoomBucket) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              if (mounted && zoom != _zoomBucket)
+                                setState(() => _zoomBucket = zoom);
+                            });
+                          }
+                        },
+                        backgroundColor: colors.surface,
+                      ),
+                      children: [
+                        ColorFiltered(
+                          colorFilter:
+                              Theme.of(context).brightness == Brightness.dark
+                              ? const ColorFilter.matrix(<double>[
+                                  .077,
+                                  -.751,
+                                  -.076,
+                                  0,
+                                  212,
+                                  -.223,
+                                  -.451,
+                                  -.076,
+                                  0,
+                                  218,
+                                  -.223,
+                                  -.751,
+                                  .224,
+                                  0,
+                                  216,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                ])
+                              : const ColorFilter.matrix(<double>[
+                                  1,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  0,
+                                  1,
+                                  0,
+                                ]),
+                          child: _tileLayer,
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            ..._buildMarkers(points, all, colors),
+                            if (location != null)
+                              Marker(
+                                point: location,
+                                width: 40,
+                                height: 40,
+                                child: CircleAvatar(
+                                  backgroundColor: colors.tertiaryContainer,
+                                  foregroundColor: colors.onTertiaryContainer,
+                                  child: const Icon(Icons.my_location),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Positioned(
+                      right: 12,
+                      top: 12,
+                      child: Column(
+                        children: [
+                          if (_supportsLocation)
+                            IconButton.filledTonal(
+                              onPressed: _locating || waiting
+                                  ? null
+                                  : _centerOnUser,
+                              tooltip: 'Centra sulla mia posizione',
+                              icon: _locating
+                                  ? const SizedBox.square(
+                                      dimension: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.my_location),
+                            ),
+                          IconButton.filledTonal(
+                            onPressed: _locating
+                                ? null
+                                : () => _controller.move(
+                                    const LatLng(45.07, 7.675),
+                                    12,
+                                  ),
+                            tooltip: 'Torna all’area di Torino',
+                            icon: const Icon(Icons.location_city_outlined),
+                          ),
+                          IconButton.filledTonal(
+                            onPressed: () => showModalBottomSheet<void>(
+                              context: context,
+                              showDragHandle: true,
+                              builder: (context) => SafeArea(
+                                child: ListView(
+                                  shrinkWrap: true,
+                                  children: [
+                                    const ListTile(
+                                      title: Text(
+                                        'Legenda · stati dimostrativi',
+                                      ),
+                                      subtitle: Text(
+                                        'I cerchi numerati raggruppano più punti. Tocca per ingrandire.',
+                                      ),
+                                    ),
+                                    for (final status in BinStatus.values)
+                                      ListTile(
+                                        leading: Icon(
+                                          status.icon,
+                                          color: status.color,
+                                        ),
+                                        title: Text(status.label),
+                                        subtitle: Text(status.description),
+                                      ),
+                                    const ListTile(
+                                      leading: Icon(Icons.recycling),
+                                      title: Text(
+                                        'Punto di riciclo senza telemetria',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            tooltip: 'Legenda',
+                            icon: const Icon(Icons.info_outline),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                if (userLocation != null)
-                  Marker(
-                    point: userLocation,
-                    width: 36,
-                    height: 36,
-                    child: Tooltip(
-                      message: 'La tua posizione',
-                      child: CircleAvatar(
-                        backgroundColor: colors.tertiaryContainer,
-                        foregroundColor: colors.onTertiaryContainer,
-                        child: const Icon(Icons.my_location, size: 20),
+                    if (_tileFailed)
+                      Positioned(
+                        bottom: 36,
+                        left: 8,
+                        right: 8,
+                        child: Material(
+                          color: colors.surface,
+                          child: ListTile(
+                            title: const Text(
+                              'Alcune tile non sono disponibili.',
+                            ),
+                            trailing: TextButton(
+                              onPressed: () => setState(() => _list = true),
+                              child: const Text('Elenco'),
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (points.isEmpty)
+                      Positioned(
+                        top: 12,
+                        left: 12,
+                        child: Material(
+                          color: colors.surface,
+                          borderRadius: BorderRadius.circular(8),
+                          child: const Padding(
+                            padding: EdgeInsets.all(12),
+                            child: Text('Nessun risultato'),
+                          ),
+                        ),
+                      ),
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Material(
+                        color: colors.surface,
+                        child: InkWell(
+                          onTap: _openAttribution,
+                          child: const Padding(
+                            padding: EdgeInsets.all(7),
+                            child: Text(
+                              '© OpenStreetMap contributors',
+                              style: TextStyle(
+                                fontSize: 11,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                  ),
+                  ],
+                ),
+                points.isEmpty
+                    ? const Center(
+                        child: Text('Nessun risultato per i filtri.'),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        itemCount: points.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
+                        itemBuilder: (_, index) =>
+                            _pointRow(points[index], all),
+                      ),
               ],
             ),
-            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
-              Positioned(
-                top: 12,
-                right: 12,
-                child: IconButton.filledTonal(
-                  onPressed: _isLocating ? null : _centerOnUser,
-                  tooltip: 'Centra sulla mia posizione',
-                  icon: _isLocating
-                      ? const SizedBox.square(
-                          dimension: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            semanticsLabel: 'Ricerca della posizione',
-                          ),
-                        )
-                      : const Icon(Icons.my_location),
-                ),
-              ),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: ColoredBox(
-                color: colors.surface,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+          ),
+          if (!_list)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Stati simulati · tocca i gruppi per ingrandire',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                   ),
-                  child: SelectableText(
-                    '© OpenStreetMap contributors · ODbL\n'
-                    'https://www.openstreetmap.org/copyright',
-                    style: theme.textTheme.bodySmall,
-                    textAlign: TextAlign.right,
+                  TextButton(
+                    onPressed: _locating
+                        ? null
+                        : () => setState(() => _list = true),
+                    child: const Text('Elenco'),
                   ),
-                ),
+                ],
               ),
             ),
-          ],
-        );
-      },
-    );
-  }
+        ],
+      );
+    },
+  );
+  Widget _message(IconData icon, String text, VoidCallback retry) => Center(
+    child: Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          EcoIconBadge(icon: icon, size: 68),
+          const SizedBox(height: 12),
+          Text(text, textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          FilledButton(onPressed: retry, child: const Text('Riprova')),
+        ],
+      ),
+    ),
+  );
 }

@@ -12,7 +12,20 @@
           "package_name": "com.example.ecocycle"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "222127221076-06djtlhchi8b4k65fqoig7ot4tvu2iq5.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.ecocycle",
+            "certificate_hash": "21c0d27bd4cf995691ccda91206d7e689eaac489"
+          }
+        },
+        {
+          "client_id": "222127221076-umltda2t52in916vp6u0vd7n76ppdj48.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDXh1pSRCrgRP58ZJGoodUwHoHU2achCp4"
@@ -20,7 +33,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "222127221076-umltda2t52in916vp6u0vd7n76ppdj48.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "222127221076-9fioofbuodh2d030dnqsft8kqq1pluqo.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.ecocycle"
+              }
+            }
+          ]
         }
       }
     }

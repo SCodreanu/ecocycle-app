@@ -1,50 +1,53 @@
-# Integration and acceptance notes
+# Integration notes
 
-## Source audit
+## Overpass and OpenStreetMap
 
-Base: `SCodreanu/ecocycle-app` default branch, latest observed commit `313e06753e7b18b6a9cdf0c8bb28cf6b58be3a24` (Add user geolocation). Source files were fetched through the GitHub connector. The existing local checkout was not accessible; no remote commit or push was performed. The overlay contains only targeted replacement/new files. The original Firebase configuration, Android manifest, Gradle files and lockfile are not included or overwritten.
+`RecyclingService` performs an HTTP GET at `https://ovp.dresel.systems/api/interpreter`, with URL-encoded `data` containing the query:
 
-Reviewed the supplied Figma PDF (mobile wireframe/auth/onboarding/map/rewards/detail/report/profile/error pages, especially 1, 10, 15, 17–18, 25–26, 38–42, 54–62, 66 and 69); the React ZIP's map, brand CSS and authentication; the PNG/SVG logo; the course materials (especially Day 8–12 and 15); and the final project brief. The official assignment file and original slide presentation were not independently retrieved. Requirements supplied in the project brief are the basis of the checklist. React PHP/MySQL, synthetic coordinates and administrative screens were not copied.
+```overpass
+[out:json][timeout:15];
+nwr["amenity"="recycling"](45.00,7.58,45.14,7.77);
+out center;
+```
 
-Design decisions: use original transparent PNG, dark-green brand palette from React and Figma, Material 3 central themes, two-stage registration without unnecessary DOB/country, simplified onboarding without unsupported notifications, fixed Turin query, status telemetry only for known containers, explicit local-only reports and rewards. Use Android as primary target. Standard OSM raster tiles remain light even in the dark theme.
+No API key is required. The client timeout is 25 seconds. Node coordinates come from `lat`/`lon`; ways and relations use `center`. `RecyclingPoint` retains the element type, ID, coordinates and tags; materials are inferred from explicit `recycling:* = yes` tags and translated where known. The REST result is shared by the map, list, preview, detail and alternative selection. The request covers a fixed demonstration area and is not repeated on every pan or zoom.
 
-## Integration references
+The basemap is rendered with `flutter_map` using `https://tile.openstreetmap.org/{z}/{x}/{y}.png`. Attribution is displayed. A local color filter changes the appearance of the standard tiles in Dark Mode; this is not a dedicated dark tile provider. Marker grouping is an approximate zoom-dependent grid, not a dedicated spatial clustering engine. At high zoom, co-located points can still overlap. Public API and tile availability are not guaranteed. Respect the OSM tile policy; do not prefetch or bulk-download tiles. No reverse geocoding is performed.
 
-- https://firebase.google.com/docs/auth/flutter/federated-auth
-- https://firebase.google.com/docs/auth/flutter/start
-- https://pub.dev/packages/google_sign_in
-- https://pub.dev/packages/shared_preferences
-- https://pub.dev/packages/image_picker
-- https://pub.dev/packages/path_provider
-- https://pub.dev/packages/url_launcher
-- https://pub.dev/packages/flutter_map
-- https://pub.dev/packages/geolocator
-- https://operations.osmfoundation.org/policies/tiles/
-- https://www.openstreetmap.org/copyright
+## Authentication
 
-## Acceptance checklist (run on the Android checkout)
+The existing Firebase project supplies email/password authentication, password recovery, Google identity and session state. Google Sign-In is enabled by default for the configured Android build. The application ID must remain `com.example.ecocycle` unless Firebase/OAuth is reconfigured.
 
-| Requirement | Evidence in the supplied source | Runtime verification |
-| --- | --- | --- |
-| Real REST via http | RecyclingService GET with existing Overpass query | Pending |
-| Three or more screens | Auth + map/list/detail + rewards + reports + profile + onboarding | Pending |
-| API-backed list/detail | RecyclingPoint list and detail | Pending |
-| Loading, network failure, empty, retry | FutureBuilder and test cases | Pending |
-| Navigation | AuthGate, HomeShell and modal/detail routes | Pending |
-| Light/dark | Shared ThemeData, ThemeMode, local preference | Pending |
-| Location cases | Android permissions preserved, explicit request/status and settings | Pending |
-| Form validation and feedback | Auth and report forms | Pending |
-| Local data by user | UID keys and photo folders | Pending |
-| Repo/compilable submission | Overlay must be applied to original checkout; build pending | Pending |
-| README and 5–8 min demo | README.md and DEMO.md supplied | Documents authored |
+On Windows, if Gradle cannot find Java, set `JAVA_HOME` to the actual installed JDK (Android Studio's `jbr` is an option). From the project root:
 
-## Limits and test plan
+```powershell
+cd android
+.\gradlew signingReport
+cd ..
+```
 
-- No actual Firebase project console access, OAuth configuration, dependency resolution, Android build, device or emulator execution in this environment.
-- Confirm all packages resolve together and run `dart format`, `flutter analyze`, `flutter test`, `flutter build apk --debug`. Fix any SDK/version issues before release.
-- Test auth registration (including duplicate email and display name update), wrong password, offline, reset email, user session after restart and logout. Social login is configuration gated; Google and Apple paths are unverified. Facebook is not implemented.
-- Test every route at small and large Android sizes, keyboard open, long names/materials, map gestures, list toggle, marker preview, detail, point-linked reports, no results, API errors, tile errors, and permission state recovery. No visual validation of the Flutter output has been performed.
-- Verify photo selection/cancellation, camera capture, durable image path after restart, local history, two different Firebase accounts and no cross-account data leakage. Test storage failure and rapid duplicate taps. The app has no external reporting or commercial redemptions.
-- The fixed Turin query avoids continuous or unbounded public API calls; outside Turin, the user marker can be far from the loaded points. This does not imply global point coverage.
-- Verify the tile cache and network headers against the current public OSM tile policy before wider deployment. Do not prefetch or bulk-download.
-- Accessibility, contrast, tile caching behavior, Android activity restoration, persistence tests and all real-device behavior require follow-up. This is a source update, not a verified release APK.
+Register the appropriate signing certificate's SHA-1 and SHA-256 in Firebase project settings. Enable Google in Authentication, select the project support email, and download the matching Android `google-services.json` again. Check for an Android OAuth client (`client_type: 1`) with the correct package and certificate hash, and a web OAuth client (`client_type: 3`). Use a Google Play-capable device or emulator. Do not include any OAuth client secret or private keystore in Git. Apple authentication remains optional/configuration-gated and is not verified; Facebook is out of scope.
+
+## Telemetry and alternatives
+
+The stable OSM identifier seeds demonstrative telemetry; it does not come from sensors. Fill statuses are normal (0–69%), nearly full (70–89%) and full (90–100%); unavailable and maintenance override fill status. Capacity, estimated occupied/residual volume, estimated weight, temperature and gas are synthetic. Collection centres without container telemetry are distinguished from containers. Alternative containers share at least one material, have a simulated available/nearly full status and are within 3 km in straight-line distance of the selected point; up to three are shown. External directions use Google Maps URLs, not a routing API.
+
+## Local persistence and XP
+
+`LocalStore` uses UID-scoped `SharedPreferencesAsync` records; local report and profile images are stored in app-private documents folders per UID. The theme is device-wide. Records are not cloud-synchronized. No user password is stored manually.
+
+`XpService` calculates progression from recorded activity: onboarding +100 once; first self-declared recycling day +50, later days +20; one report credit of +50 per distinct day; mission +100 after three distinct recycling days. Deleting a report retains its earned date, not its deleted description, photo or coordinates. Each level requires 500 total earned XP; spending XP affects the available balance but not the level. Legacy redemptions from the former fixed balance are retained separately. Rewards are demonstrative, not commercial claims. Daily limits are local demonstration rules, not anti-fraud security.
+
+## Acceptance checks
+
+| Requirement from the project brief | Implementation evidence |
+| --- | --- |
+| Real REST API via HTTP | `RecyclingService` and Overpass |
+| At least three connected screens | `AuthGate`, `HomeShell`, detail routes |
+| API-driven list/detail | `RecyclingPoint` map/list/preview/detail |
+| Loading and network error handling | FutureBuilder, timeout, retry and loading animation |
+| Clear code and separation | models, services, screens, theme and widgets |
+| Light and Dark themes | shared ThemeData and persisted theme mode |
+| README and 5–8 minute demo | root README.md and DEMO.md |
+
+Before submission, run the analyzer and tests, install the APK, and check email and Google auth, loading/error states, map/filter/detail/navigation, favorites, XP/redemption, reports, avatar isolation, theme and logout. The student has reported successful emulator checks; this document does not certify the final APK or the final test run. The original official assignment file was not independently available for this documentation revision; compare the checklist with the actual teacher brief.
